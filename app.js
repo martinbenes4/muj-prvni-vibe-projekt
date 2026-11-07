@@ -256,17 +256,25 @@ function isUuid(value) {
 }
 
 function splitStoredName(stored) {
-  const parts = String(stored).split("\u001f");
+  const text = String(stored);
+  const parts = text.split("\u001f");
   if (parts.length === 3 && validRange(parts[1], parts[2])) {
     return { name: parts[0], start: parts[1], end: parts[2] };
   }
-  return { name: String(stored), start: "", end: "" };
+  const match = text.match(/^(.*)\|([0-9]{1,2}):([0-5][0-9])-([0-9]{1,2}):([0-5][0-9])\|$/);
+  if (match) {
+    const start = toTimeValue(Number(match[2]), Number(match[3]));
+    const end = toTimeValue(Number(match[4]), Number(match[5]));
+    if (validRange(start, end)) return { name: match[1], start, end };
+  }
+  return { name: text, start: "", end: "" };
 }
 
 function storedName(event) {
   const time = validRange(event.start, event.end);
-  if (!time) return event.name;
-  return `${event.name}\u001f${time.start}\u001f${time.end}`;
+  const name = splitStoredName(event.name).name;
+  if (!time) return name;
+  return `${name}|${time.start}-${time.end}|`;
 }
 
 async function loadRemoteEvents() {
@@ -458,6 +466,18 @@ async function useSession(nextSession) {
   }
 }
 
+async function reloadRemoteEvents() {
+  if (!session || !supabaseClient) return;
+  const next = await loadRemoteEvents();
+  if (!session) return;
+  events = next;
+  render();
+  if (timesNeedUpload) {
+    timesNeedUpload = false;
+    saveEvents();
+  }
+}
+
 function setSelectedDate(date) {
   selectedDate = date;
   render();
@@ -516,8 +536,12 @@ function formatTime(value) {
 }
 
 function parseTime(value) {
-  if (typeof value !== "string" || !/^([01]\d|2[0-3]):([0-5]\d)$/.test(value)) return null;
-  const [hour, minute] = value.split(":").map(Number);
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{1,2}):([0-5]\d)$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23) return null;
   return { hour, minute, total: hour * 60 + minute };
 }
 
@@ -799,6 +823,9 @@ if (supabaseClient) {
   showOAuthReturnError();
   supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
     useSession(nextSession);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") reloadRemoteEvents();
   });
 } else {
   syncMessage = "Přihlášení se nepodařilo načíst. Bez účtu aplikaci nelze používat.";
