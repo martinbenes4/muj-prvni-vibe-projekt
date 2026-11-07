@@ -1,0 +1,22 @@
+body {
+  background:
+    radial-gradient(circle at top, rgba(13, 148, 136, 0.12), transparent 28rem),
+    #f8fafc;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.habit-card {
+  animation: rise 180ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

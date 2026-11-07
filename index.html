@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tracker návyků</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="min-h-screen text-slate-800 antialiased">
+    <main class="mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
+      <header class="mb-8">
+        <p class="text-sm font-medium uppercase tracking-wide text-teal-700">Dnes</p>
+        <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Tracker návyků</h1>
+        <p id="today-label" class="mt-2 text-slate-500"></p>
+      </header>
+
+      <section class="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+        <form id="habit-form" class="flex gap-2">
+          <label class="sr-only" for="habit-name">Název návyku</label>
+          <input
+            id="habit-name"
+            name="name"
+            type="text"
+            maxlength="80"
+            required
+            placeholder="Nový návyk, například ranní procházka"
+            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2"
+          />
+          <button
+            type="submit"
+            class="shrink-0 rounded-xl bg-teal-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+          >
+            Přidat
+          </button>
+        </form>
+      </section>
+
+      <section class="mb-4 flex items-center justify-between text-sm">
+        <h2 class="font-medium text-slate-700">Dnešní návyky</h2>
+        <p id="progress-label" class="text-slate-500"></p>
+      </section>
+
+      <ul id="habit-list" class="flex flex-col gap-3"></ul>
+
+      <p
+        id="empty-state"
+        class="hidden rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center text-slate-500"
+      >
+        Zatím tu žádný návyk není. Přidej první a začni sledovat dnešek.
+      </p>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
