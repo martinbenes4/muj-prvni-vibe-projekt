@@ -40,6 +40,7 @@ const authEmailInput = document.querySelector("#auth-email-input");
 const authPasswordInput = document.querySelector("#auth-password-input");
 const authMessage = document.querySelector("#auth-message");
 const authRegister = document.querySelector("#auth-register");
+const authGoogle = document.querySelector("#auth-google");
 const appShell = document.querySelector("#app-shell");
 const syncStatus = document.querySelector("#sync-status");
 
@@ -181,6 +182,9 @@ authForm.addEventListener("submit", (event) => {
 authRegister.addEventListener("click", () => {
   signUp();
 });
+authGoogle.addEventListener("click", () => {
+  signInWithGoogle();
+});
 
 function loadLocalEvents() {
   try {
@@ -317,6 +321,27 @@ function showAuthMessage(text, isError) {
   authMessage.className = isError
     ? "mt-3 text-sm text-rose-700 dark:text-rose-300"
     : "mt-3 text-sm text-teal-700 dark:text-teal-300";
+}
+
+async function signInWithGoogle() {
+  if (!supabaseClient) {
+    showAuthMessage("Přihlášení se teď nepodařilo načíst.", true);
+    return;
+  }
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
+  if (error) showAuthMessage("Přihlášení přes Google se nepovedlo.", true);
+}
+
+function showOAuthReturnError() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  if (!params.get("error")) return;
+  showAuthMessage("Přihlášení přes Google se nepovedlo.", true);
+  history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
 }
 
 async function signIn() {
@@ -698,6 +723,7 @@ function render() {
 }
 
 if (supabaseClient) {
+  showOAuthReturnError();
   supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
     useSession(nextSession);
   });
