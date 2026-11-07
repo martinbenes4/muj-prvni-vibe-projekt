@@ -30,7 +30,24 @@
           <p id="day-kind" class="text-sm font-medium uppercase tracking-wide text-teal-700 dark:text-teal-300">Dnes</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">Tracker návyků</h1>
           <p id="today-label" class="mt-2 text-slate-500 dark:text-slate-400"></p>
+          <p id="sync-status" class="mt-1 hidden text-sm text-rose-700 dark:text-rose-300"></p>
         </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            id="auth-open"
+            type="button"
+            class="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+          >
+            Přihlásit
+          </button>
+          <p id="auth-email" class="hidden max-w-32 truncate text-sm text-slate-500 dark:text-slate-400"></p>
+          <button
+            id="auth-logout"
+            type="button"
+            class="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+          >
+            Odhlásit
+          </button>
         <button
           id="theme-toggle"
           type="button"
@@ -52,8 +69,39 @@
             </svg>
           </span>
         </button>
+        </div>
       </header>
 
+      <div id="auth-modal" class="mb-6" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <form id="auth-form" class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+          <h2 id="auth-title" class="text-xl font-semibold text-slate-900 dark:text-white">Přihlášení</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Stejný účet otevře návyky i na dalším zařízení.</p>
+          <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200" for="auth-email-input">E-mail</label>
+          <input
+            id="auth-email-input"
+            type="email"
+            autocomplete="username"
+            required
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <label class="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200" for="auth-password-input">Heslo</label>
+          <input
+            id="auth-password-input"
+            type="password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+            class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <p id="auth-message" class="mt-3 text-sm"></p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button type="submit" class="rounded-xl bg-teal-700 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-800">Přihlásit</button>
+            <button id="auth-register" type="button" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800">Vytvořit účet</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="app-shell" class="hidden">
       <section class="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
         <div class="flex flex-wrap items-center gap-2">
           <button
@@ -169,8 +217,10 @@
       >
         V tento den zatím nic není. Přidej událost.
       </p>
+      </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,5 +1,9 @@
 const STORAGE_KEY = "habit-tracker";
 const THEME_KEY = "habit-tracker-theme";
+const TIME_KEY = "habit-tracker-times";
+const SUPABASE_URL = "https://ugkeyyvxxhisovreogad.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVna2V5eXZ4eGhpc292cmVvZ2FkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwNDYwMTcsImV4cCI6MjEwOTYyMjAxN30.IYKuHD5XTNZE84m3UMTWugmcOJPpkhB_jqakaa5To3k";
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 const form = document.querySelector("#habit-form");
 const nameInput = document.querySelector("#habit-name");
@@ -27,8 +31,23 @@ const timePickerPreview = document.querySelector("#time-picker-preview");
 const hourGrid = document.querySelector("#hour-grid");
 const minuteGrid = document.querySelector("#minute-grid");
 const timeError = document.querySelector("#time-error");
+const authOpen = document.querySelector("#auth-open");
+const authLogout = document.querySelector("#auth-logout");
+const authEmail = document.querySelector("#auth-email");
+const authModal = document.querySelector("#auth-modal");
+const authForm = document.querySelector("#auth-form");
+const authEmailInput = document.querySelector("#auth-email-input");
+const authPasswordInput = document.querySelector("#auth-password-input");
+const authMessage = document.querySelector("#auth-message");
+const authRegister = document.querySelector("#auth-register");
+const appShell = document.querySelector("#app-shell");
+const syncStatus = document.querySelector("#sync-status");
 
-let events = loadEvents();
+let events = [];
+let session = null;
+let appliedUserId;
+let syncMessage = "";
+let saveVersion = 0;
 let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
@@ -151,7 +170,19 @@ list.addEventListener("click", (event) => {
   render();
 });
 
-function loadEvents() {
+authOpen.addEventListener("click", () => authEmailInput.focus());
+authLogout.addEventListener("click", () => {
+  if (supabaseClient) supabaseClient.auth.signOut();
+});
+authForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  signIn();
+});
+authRegister.addEventListener("click", () => {
+  signUp();
+});
+
+function loadLocalEvents() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(stored)) return [];
@@ -189,7 +220,159 @@ function toEvent(id, name, date, done, start = "", end = "") {
 }
 
 function saveEvents() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+  if (!session || !supabaseClient) return;
+  rememberTimes(events);
+  persistRemoteEvents();
+}
+
+function readTimeCache() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(TIME_KEY));
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberTimes(items) {
+  const cache = readTimeCache();
+  items.forEach((item) => {
+    if (item.start && item.end) cache[item.id] = { start: item.start, end: item.end };
+  });
+  localStorage.setItem(TIME_KEY, JSON.stringify(cache));
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function loadRemoteEvents() {
+  const times = readTimeCache();
+  const { data, error } = await supabaseClient
+    .from("habits")
+    .select("id,name,date,completed")
+    .eq("user_id", session.user.id);
+  if (error) {
+    syncMessage = "Návyky se z cloudu nepodařilo načíst.";
+    return [];
+  }
+  syncMessage = "";
+  return (data || [])
+    .map((row) => {
+      const date = String(row.date || "").slice(0, 10);
+      const cached = times[row.id] || {};
+      if (!isValidDateKey(date) || typeof row.name !== "string") return null;
+      return toEvent(String(row.id), row.name, date, row.completed === true, cached.start, cached.end);
+    })
+    .filter(Boolean);
+}
+
+async function persistRemoteEvents() {
+  const version = ++saveVersion;
+  const userId = session.user.id;
+  const rows = events.map((event) => {
+    const id = isUuid(event.id) ? event.id : crypto.randomUUID();
+    if (event.id !== id) event.id = id;
+    return {
+      id,
+      user_id: userId,
+      name: event.name,
+      date: event.date,
+      completed: Boolean(event.done),
+    };
+  });
+  rememberTimes(events);
+
+  if (rows.length) {
+    const { error } = await supabaseClient.from("habits").upsert(rows, { onConflict: "id" });
+    if (version !== saveVersion) return;
+    if (error) {
+      syncMessage = "Uložení do cloudu se nepovedlo.";
+      updateAuthUi();
+      return;
+    }
+  }
+
+  let removal = supabaseClient.from("habits").delete().eq("user_id", userId);
+  if (rows.length) removal = removal.not("id", "in", `(${rows.map((row) => row.id).join(",")})`);
+  const { error: deleteError } = await removal;
+  if (version !== saveVersion) return;
+  syncMessage = deleteError ? "Uložení do cloudu se nepovedlo." : "";
+  updateAuthUi();
+}
+
+function closeAuthModal() {
+  authForm.reset();
+}
+
+function authCredentials() {
+  return {
+    email: authEmailInput.value.trim(),
+    password: authPasswordInput.value,
+  };
+}
+
+function showAuthMessage(text, isError) {
+  authMessage.textContent = text;
+  authMessage.className = isError
+    ? "mt-3 text-sm text-rose-700 dark:text-rose-300"
+    : "mt-3 text-sm text-teal-700 dark:text-teal-300";
+}
+
+async function signIn() {
+  if (!supabaseClient) {
+    showAuthMessage("Přihlášení se teď nepodařilo načíst.", true);
+    return;
+  }
+  const { error } = await supabaseClient.auth.signInWithPassword(authCredentials());
+  if (error) {
+    showAuthMessage("E-mail nebo heslo nesedí.", true);
+    return;
+  }
+  closeAuthModal();
+}
+
+async function signUp() {
+  if (!supabaseClient) {
+    showAuthMessage("Registrace se teď nepodařila načíst.", true);
+    return;
+  }
+  const { data, error } = await supabaseClient.auth.signUp(authCredentials());
+  if (error) {
+    showAuthMessage("Účet se nepodařilo vytvořit. Zkus jiný e-mail nebo delší heslo.", true);
+    return;
+  }
+  if (!data.session) {
+    showAuthMessage("Účet je založený. Potvrď ho e-mailem a pak se přihlas.", false);
+    return;
+  }
+  closeAuthModal();
+}
+
+function updateAuthUi() {
+  const signedIn = Boolean(session);
+  authOpen.classList.toggle("hidden", signedIn);
+  authLogout.classList.toggle("hidden", !signedIn);
+  authEmail.classList.toggle("hidden", !signedIn);
+  authEmail.textContent = signedIn ? session.user.email || "" : "";
+  authModal.classList.toggle("hidden", signedIn);
+  appShell.classList.toggle("hidden", !signedIn);
+  syncStatus.textContent = syncMessage;
+  syncStatus.classList.toggle("hidden", !syncMessage);
+}
+
+async function useSession(nextSession) {
+  const nextId = nextSession?.user?.id || null;
+  if (appliedUserId === nextId) {
+    session = nextSession;
+    updateAuthUi();
+    return;
+  }
+  appliedUserId = nextId;
+  session = nextSession;
+  events = nextSession ? await loadRemoteEvents() : [];
+  updateAuthUi();
+  render();
 }
 
 function setSelectedDate(date) {
@@ -512,4 +695,13 @@ function render() {
     row.append(toggle, textWrap, remove);
     list.append(row);
   });
+}
+
+if (supabaseClient) {
+  supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
+    useSession(nextSession);
+  });
+} else {
+  syncMessage = "Přihlášení se nepodařilo načíst. Bez účtu aplikaci nelze používat.";
+  updateAuthUi();
 }
