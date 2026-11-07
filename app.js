@@ -56,7 +56,13 @@ function loadHabits() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(stored)) return [];
-    return stored.filter((habit) => habit && typeof habit.name === "string" && typeof habit.id === "string");
+    return stored
+      .filter((habit) => habit && typeof habit.name === "string" && typeof habit.id === "string")
+      .map((habit) => ({
+        id: habit.id,
+        name: habit.name,
+        doneOn: Array.isArray(habit.doneOn) ? habit.doneOn.filter((day) => typeof day === "string") : [],
+      }));
   } catch {
     return [];
   }
