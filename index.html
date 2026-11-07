@@ -5,27 +5,100 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tracker návyků</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = { darkMode: "class" };
+    </script>
+    <script>
+      (function () {
+        try {
+          const theme = localStorage.getItem("habit-tracker-theme");
+          const dark =
+            theme === "dark" ||
+            (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch {
+          /* uložení motivu není dostupné */
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body class="min-h-screen text-slate-800 antialiased">
+  <body class="min-h-screen text-slate-800 antialiased dark:text-slate-100">
     <main class="mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
-      <header class="mb-8">
-        <p class="text-sm font-medium uppercase tracking-wide text-teal-700">Dnes</p>
-        <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900">Tracker návyků</h1>
-        <p id="today-label" class="mt-2 text-slate-500"></p>
+      <header class="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <p id="day-kind" class="text-sm font-medium uppercase tracking-wide text-teal-700 dark:text-teal-300">Dnes</p>
+          <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">Tracker návyků</h1>
+          <p id="today-label" class="mt-2 text-slate-500 dark:text-slate-400"></p>
+        </div>
+        <button
+          id="theme-toggle"
+          type="button"
+          role="switch"
+          aria-checked="false"
+          aria-label="Přepnout na tmavý režim"
+          class="relative h-9 w-16 shrink-0 rounded-full bg-slate-200 transition focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2 dark:bg-slate-700 dark:focus:ring-offset-slate-950"
+        >
+          <span class="sr-only">Tmavý režim</span>
+          <span
+            class="theme-knob pointer-events-none absolute top-1 grid h-7 w-7 place-items-center rounded-full bg-white shadow dark:bg-slate-900"
+          >
+            <svg class="h-4 w-4 text-amber-500 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+            </svg>
+            <svg class="hidden h-4 w-4 text-indigo-200 dark:block" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3a7 7 0 0 0 11.5 11.5z"></path>
+            </svg>
+          </span>
+        </button>
       </header>
 
-      <section class="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <section class="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
+        <div class="flex flex-wrap items-center gap-2">
+          <button
+            id="date-prev"
+            type="button"
+            class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            Dříve
+          </button>
+          <label class="sr-only" for="selected-date">Datum</label>
+          <input
+            id="selected-date"
+            type="date"
+            required
+            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
+          />
+          <button
+            id="date-next"
+            type="button"
+            class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+          >
+            Později
+          </button>
+          <button
+            id="date-today"
+            type="button"
+            class="hidden rounded-xl bg-teal-700 px-3 py-3 text-sm font-semibold text-white hover:bg-teal-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:ring-offset-2"
+          >
+            Dnes
+          </button>
+        </div>
+        <p id="date-hint" class="mt-3 text-sm text-slate-500 dark:text-slate-400"></p>
+      </section>
+
+      <section class="mb-6 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
         <form id="habit-form" class="flex gap-2">
-          <label class="sr-only" for="habit-name">Název návyku</label>
+          <label class="sr-only" for="habit-name">Název události</label>
           <input
             id="habit-name"
             name="name"
             type="text"
             maxlength="80"
             required
-            placeholder="Nový návyk, například ranní procházka"
-            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2"
+            placeholder="Nová událost, například schůzka"
+            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
           />
           <button
             type="submit"
@@ -37,17 +110,17 @@
       </section>
 
       <section class="mb-4 flex items-center justify-between text-sm">
-        <h2 class="font-medium text-slate-700">Dnešní návyky</h2>
-        <p id="progress-label" class="text-slate-500"></p>
+        <h2 id="list-heading" class="font-medium text-slate-700 dark:text-slate-200">Dnešní události</h2>
+        <p id="progress-label" class="text-slate-500 dark:text-slate-400"></p>
       </section>
 
       <ul id="habit-list" class="flex flex-col gap-3"></ul>
 
       <p
         id="empty-state"
-        class="hidden rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center text-slate-500"
+        class="hidden rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-10 text-center text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400"
       >
-        Zatím tu žádný návyk není. Přidej první a začni sledovat dnešek.
+        V tento den zatím nic není. Přidej událost.
       </p>
     </main>
 

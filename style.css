@@ -5,6 +5,25 @@ body {
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background:
+    radial-gradient(circle at top, rgba(45, 212, 191, 0.16), transparent 28rem),
+    #020617;
+}
+
+.theme-knob {
+  left: 0.25rem;
+  transition: left 180ms ease;
+}
+
+html.dark .theme-knob {
+  left: calc(100% - 2rem);
+}
+
 .habit-card {
   animation: rise 180ms ease-out;
 }
