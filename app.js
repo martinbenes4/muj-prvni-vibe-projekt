@@ -9,8 +9,10 @@ const form = document.querySelector("#habit-form");
 const nameInput = document.querySelector("#habit-name");
 const list = document.querySelector("#habit-list");
 const timelineSection = document.querySelector("#timeline-section");
+const timelineClock = document.querySelector("#timeline-clock");
 const timelineHours = document.querySelector("#timeline-hours");
 const timelineTrack = document.querySelector("#timeline-track");
+const timelineUntimed = document.querySelector("#timeline-untimed");
 const emptyState = document.querySelector("#empty-state");
 const todayLabel = document.querySelector("#today-label");
 const progressLabel = document.querySelector("#progress-label");
@@ -49,6 +51,7 @@ let session = null;
 let appliedUserId;
 let syncMessage = "";
 let saveVersion = 0;
+let timesNeedUpload = false;
 let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
@@ -171,7 +174,9 @@ list.addEventListener("click", (event) => {
   render();
 });
 
-authOpen.addEventListener("click", () => authEmailInput.focus());
+authOpen.addEventListener("click", () => {
+  signInWithGoogle();
+});
 authLogout.addEventListener("click", () => {
   if (supabaseClient) supabaseClient.auth.signOut();
 });
@@ -250,6 +255,20 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function splitStoredName(stored) {
+  const parts = String(stored).split("\u001f");
+  if (parts.length === 3 && validRange(parts[1], parts[2])) {
+    return { name: parts[0], start: parts[1], end: parts[2] };
+  }
+  return { name: String(stored), start: "", end: "" };
+}
+
+function storedName(event) {
+  const time = validRange(event.start, event.end);
+  if (!time) return event.name;
+  return `${event.name}\u001f${time.start}\u001f${time.end}`;
+}
+
 async function loadRemoteEvents() {
   const times = readTimeCache();
   const { data, error } = await supabaseClient
@@ -261,12 +280,17 @@ async function loadRemoteEvents() {
     return [];
   }
   syncMessage = "";
+  timesNeedUpload = false;
   return (data || [])
     .map((row) => {
       const date = String(row.date || "").slice(0, 10);
+      const parsed = splitStoredName(row.name);
       const cached = times[row.id] || {};
-      if (!isValidDateKey(date) || typeof row.name !== "string") return null;
-      return toEvent(String(row.id), row.name, date, row.completed === true, cached.start, cached.end);
+      const start = parsed.start || cached.start || "";
+      const end = parsed.end || cached.end || "";
+      if (!parsed.start && validRange(start, end)) timesNeedUpload = true;
+      if (!isValidDateKey(date) || typeof row.name !== "string" || !parsed.name.trim()) return null;
+      return toEvent(String(row.id), parsed.name, date, row.completed === true, start, end);
     })
     .filter(Boolean);
 }
@@ -280,7 +304,7 @@ async function persistRemoteEvents() {
     return {
       id,
       user_id: userId,
-      name: event.name,
+      name: storedName(event),
       date: event.date,
       completed: Boolean(event.done),
     };
@@ -428,6 +452,10 @@ async function useSession(nextSession) {
   events = nextSession ? await loadRemoteEvents() : [];
   updateAuthUi();
   render();
+  if (timesNeedUpload) {
+    timesNeedUpload = false;
+    saveEvents();
+  }
 }
 
 function setSelectedDate(date) {
@@ -594,73 +622,88 @@ function renderTimeline(items) {
       return { ...item, startMin: start.total, endMin: end.total };
     })
     .filter(Boolean);
+  const untimed = items.filter((item) => !validRange(item.start, item.end));
 
   timelineHours.replaceChildren();
   timelineTrack.replaceChildren();
-  timelineSection.classList.toggle("hidden", timed.length === 0);
-  if (timed.length === 0) return;
+  timelineUntimed.replaceChildren();
+  timelineSection.classList.toggle("hidden", timed.length === 0 && untimed.length === 0);
+  timelineClock.classList.toggle("hidden", timed.length === 0);
+  timelineUntimed.classList.toggle("hidden", untimed.length === 0);
+  timelineUntimed.classList.toggle("mt-3", timed.length > 0);
 
-  const rangeStart = Math.floor(Math.min(...timed.map((item) => item.startMin)) / 60) * 60;
-  const rangeEnd = Math.ceil(Math.max(...timed.map((item) => item.endMin)) / 60) * 60;
-  const span = Math.max(rangeEnd - rangeStart, 60);
-  const pxPerMin = span > 8 * 60 ? 0.65 : 1.15;
-  const height = span * pxPerMin;
-  timelineHours.style.height = `${height}px`;
-  timelineTrack.style.height = `${height}px`;
+  if (timed.length > 0) {
+    const rangeStart = Math.floor(Math.min(...timed.map((item) => item.startMin)) / 60) * 60;
+    const rangeEnd = Math.ceil(Math.max(...timed.map((item) => item.endMin)) / 60) * 60;
+    const span = Math.max(rangeEnd - rangeStart, 60);
+    const pxPerMin = span > 8 * 60 ? 0.65 : 1.15;
+    const height = span * pxPerMin;
+    timelineHours.style.height = `${height}px`;
+    timelineTrack.style.height = `${height}px`;
 
-  for (let minute = rangeStart; minute <= rangeEnd; minute += 60) {
-    const top = (minute - rangeStart) * pxPerMin;
-    const label = document.createElement("span");
-    label.className = "timeline-hour -translate-y-1/2 pr-2 text-right text-xs tabular-nums text-slate-400";
-    label.style.top = `${top}px`;
-    label.textContent = formatTime(toTimeValue(Math.floor(minute / 60), minute % 60));
-    timelineHours.append(label);
+    for (let minute = rangeStart; minute <= rangeEnd; minute += 60) {
+      const top = (minute - rangeStart) * pxPerMin;
+      const label = document.createElement("span");
+      label.className = "timeline-hour -translate-y-1/2 pr-2 text-right text-xs tabular-nums text-slate-400";
+      label.style.top = `${top}px`;
+      label.textContent = formatTime(toTimeValue(Math.floor(minute / 60), minute % 60));
+      timelineHours.append(label);
 
-    const line = document.createElement("span");
-    line.className = "timeline-hour";
-    line.style.top = `${top}px`;
-    timelineTrack.append(line);
-  }
+      const line = document.createElement("span");
+      line.className = "timeline-hour";
+      line.style.top = `${top}px`;
+      timelineTrack.append(line);
+    }
 
-  const lanes = [];
-  timed.forEach((item) => {
-    const lane = lanes.findIndex((end) => end <= item.startMin);
-    item.lane = lane === -1 ? lanes.length : lane;
-    lanes[item.lane] = item.endMin;
-  });
-  const laneCount = Math.max(lanes.length, 1);
+    const lanes = [];
+    timed.forEach((item) => {
+      const lane = lanes.findIndex((end) => end <= item.startMin);
+      item.lane = lane === -1 ? lanes.length : lane;
+      lanes[item.lane] = item.endMin;
+    });
+    const laneCount = Math.max(lanes.length, 1);
 
-  timed.forEach((item) => {
-    const block = document.createElement("li");
-    const done = item.done;
-    block.className = done
-      ? "timeline-block rounded-xl bg-teal-700/15 px-3 py-1 text-slate-500 ring-1 ring-teal-700/30 dark:text-slate-400"
-      : "timeline-block rounded-xl bg-teal-700 px-3 py-1 text-white shadow-sm";
-    block.style.top = `${(item.startMin - rangeStart) * pxPerMin}px`;
-    block.style.height = `${Math.max((item.endMin - item.startMin) * pxPerMin - 4, 28)}px`;
-    block.style.left = `calc(${item.lane} * (100% / ${laneCount}) + 2px)`;
-    block.style.width = `calc(100% / ${laneCount} - 6px)`;
+    timed.forEach((item) => {
+      const block = document.createElement("li");
+      const done = item.done;
+      block.className = done
+        ? "timeline-block rounded-xl bg-teal-700/15 px-3 py-1 text-slate-500 ring-1 ring-teal-700/30 dark:text-slate-400"
+        : "timeline-block rounded-xl bg-teal-700 px-3 py-1 text-white shadow-sm";
+      block.style.top = `${(item.startMin - rangeStart) * pxPerMin}px`;
+      block.style.height = `${Math.max((item.endMin - item.startMin) * pxPerMin - 4, 28)}px`;
+      block.style.left = `calc(${item.lane} * (100% / ${laneCount}) + 2px)`;
+      block.style.width = `calc(100% / ${laneCount} - 6px)`;
 
-    const name = document.createElement("p");
-    name.className = done ? "truncate text-sm line-through" : "truncate text-sm font-medium";
-    name.textContent = item.name;
-    const time = document.createElement("p");
-    time.className = done ? "text-xs tabular-nums" : "text-xs tabular-nums text-teal-50";
-    time.textContent = `${formatTime(item.start)}–${formatTime(item.end)}`;
-    block.append(name, time);
-    timelineTrack.append(block);
-  });
+      const name = document.createElement("p");
+      name.className = done ? "truncate text-sm line-through" : "truncate text-sm font-medium";
+      name.textContent = item.name;
+      const time = document.createElement("p");
+      time.className = done ? "text-xs tabular-nums" : "text-xs tabular-nums text-teal-50";
+      time.textContent = `${formatTime(item.start)}–${formatTime(item.end)}`;
+      block.append(name, time);
+      timelineTrack.append(block);
+    });
 
-  if (selectedDate === todayKey()) {
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    if (nowMin >= rangeStart && nowMin <= rangeEnd) {
-      const marker = document.createElement("span");
-      marker.className = "timeline-now";
-      marker.style.top = `${(nowMin - rangeStart) * pxPerMin}px`;
-      timelineTrack.append(marker);
+    if (selectedDate === todayKey()) {
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      if (nowMin >= rangeStart && nowMin <= rangeEnd) {
+        const marker = document.createElement("span");
+        marker.className = "timeline-now";
+        marker.style.top = `${(nowMin - rangeStart) * pxPerMin}px`;
+        timelineTrack.append(marker);
+      }
     }
   }
+
+  untimed.forEach((item) => {
+    const row = document.createElement("li");
+    row.className = item.done
+      ? "rounded-xl bg-teal-700/15 px-3 py-2 text-sm text-slate-500 line-through ring-1 ring-teal-700/30 dark:text-slate-400"
+      : "rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100";
+    row.textContent = item.name;
+    timelineUntimed.append(row);
+  });
 }
 
 function render() {

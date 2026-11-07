@@ -89,13 +89,14 @@
             </svg>
             Přihlásit přes Google
           </button>
+          <p id="auth-message" class="mt-3 hidden rounded-xl px-3 py-2 text-sm" role="status"></p>
+          <div class="hidden">
           <p class="mt-4 text-center text-xs font-medium uppercase tracking-wide text-slate-400">nebo e-mailem</p>
           <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200" for="auth-email-input">E-mail</label>
           <input
             id="auth-email-input"
             type="email"
             autocomplete="username"
-            required
             class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
           <label class="mt-3 block text-sm font-medium text-slate-700 dark:text-slate-200" for="auth-password-input">Heslo</label>
@@ -104,13 +105,12 @@
             type="password"
             autocomplete="current-password"
             minlength="6"
-            required
             class="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
-          <p id="auth-message" class="mt-3 hidden rounded-xl px-3 py-2 text-sm" role="status"></p>
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="submit" class="rounded-xl bg-teal-700 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-800">Přihlásit</button>
             <button id="auth-register" type="button" class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-100 dark:hover:bg-slate-800">Vytvořit účet</button>
+          </div>
           </div>
         </form>
       </div>
@@ -212,10 +212,11 @@
         class="mb-6 hidden rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
       >
         <h2 class="mb-4 text-sm font-medium text-slate-700 dark:text-slate-200">Časová osa</h2>
-        <div class="flex gap-3">
+        <div id="timeline-clock" class="flex gap-3">
           <div id="timeline-hours" class="relative w-12 shrink-0" aria-hidden="true"></div>
           <ol id="timeline-track" class="relative min-w-0 flex-1"></ol>
         </div>
+        <ul id="timeline-untimed" class="mt-3 flex flex-col gap-2"></ul>
       </section>
 
       <section class="mb-4 flex items-center justify-between text-sm">
