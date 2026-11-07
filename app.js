@@ -319,8 +319,22 @@ function authCredentials() {
 function showAuthMessage(text, isError) {
   authMessage.textContent = text;
   authMessage.className = isError
-    ? "mt-3 text-sm text-rose-700 dark:text-rose-300"
-    : "mt-3 text-sm text-teal-700 dark:text-teal-300";
+    ? "mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+    : "mt-3 rounded-xl bg-teal-50 px-3 py-2 text-sm text-teal-800 dark:bg-teal-950 dark:text-teal-200";
+}
+
+function authErrorText(error, fallback) {
+  const code = error?.code || "";
+  if (code === "email_not_confirmed") {
+    return "Účet ještě není potvrzený. Otevři odkaz v e-mailu a pak se přihlas.";
+  }
+  if (code === "email_address_invalid") return "Tenhle e-mail nejde použít. Zkus jinou adresu.";
+  if (code === "weak_password") return "Heslo je příliš slabé. Zkus delší a méně obvyklé.";
+  if (code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
+    return "E-mail se teď nepodařilo odeslat. Zkus to za chvíli.";
+  }
+  if (code === "user_already_exists") return "Účet s tímto e-mailem už existuje. Přihlas se.";
+  return fallback;
 }
 
 async function signInWithGoogle() {
@@ -340,7 +354,12 @@ async function signInWithGoogle() {
 function showOAuthReturnError() {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   if (!params.get("error")) return;
-  showAuthMessage("Přihlášení přes Google se nepovedlo.", true);
+  const description = (params.get("error_description") || "").toLowerCase();
+  const expired = description.includes("expired") || params.get("error_code") === "otp_expired";
+  showAuthMessage(
+    expired ? "Odkaz v e-mailu vypršel. Zkus účet založit znovu." : "Přihlášení se nepovedlo. Zkus to znovu.",
+    true,
+  );
   history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
 }
 
@@ -351,7 +370,7 @@ async function signIn() {
   }
   const { error } = await supabaseClient.auth.signInWithPassword(authCredentials());
   if (error) {
-    showAuthMessage("E-mail nebo heslo nesedí.", true);
+    showAuthMessage(authErrorText(error, "E-mail nebo heslo nesedí."), true);
     return;
   }
   closeAuthModal();
@@ -362,13 +381,24 @@ async function signUp() {
     showAuthMessage("Registrace se teď nepodařila načíst.", true);
     return;
   }
-  const { data, error } = await supabaseClient.auth.signUp(authCredentials());
+  if (!authForm.reportValidity()) return;
+  const { data, error } = await supabaseClient.auth.signUp({
+    ...authCredentials(),
+    options: {
+      emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
   if (error) {
-    showAuthMessage("Účet se nepodařilo vytvořit. Zkus jiný e-mail nebo delší heslo.", true);
+    showAuthMessage(authErrorText(error, "Účet se nepodařilo vytvořit. Zkus jiný e-mail nebo delší heslo."), true);
+    return;
+  }
+  const identities = data.user?.identities;
+  if (data.user && Array.isArray(identities) && identities.length === 0) {
+    showAuthMessage("Účet s tímto e-mailem už existuje. Přihlas se.", true);
     return;
   }
   if (!data.session) {
-    showAuthMessage("Účet je založený. Potvrď ho e-mailem a pak se přihlas.", false);
+    showAuthMessage("Účet je založený. Než půjde aplikaci použít, potvrď ho odkazem v e-mailu a pak se přihlas.", false);
     return;
   }
   closeAuthModal();
