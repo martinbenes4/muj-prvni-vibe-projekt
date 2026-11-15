@@ -4,7 +4,6 @@ alter table public.habits
   add column if not exists sport text,
   add column if not exists pocet_opakovani integer,
   add column if not exists vzdalenost numeric,
-  add column if not exists sport_2 text,
   add column if not exists sport_typ_01 text,
   add column if not exists sport_typ_02 text,
   add column if not exists sport_typ_03 text,
@@ -25,5 +24,8 @@ alter table public.habits
   add column if not exists pocet_opakovani_08 integer,
   add column if not exists pocet_opakovani_09 integer,
   add column if not exists pocet_opakovani_10 integer;
+
+alter table public.habits
+  drop column if exists sport_2;
 
 grant select, insert, update, delete on table public.habits to anon, authenticated;

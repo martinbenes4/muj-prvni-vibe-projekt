@@ -54,7 +54,6 @@ const HABIT_COLUMNS = [
   "cas_od",
   "cas_do",
   "sport",
-  "sport_2",
   "pocet_opakovani",
   "vzdalenost",
   ...EXERCISE_SLOTS.flatMap((slot) => [`sport_typ_${slot}`, `pocet_opakovani_${slot}`]),
@@ -389,8 +388,7 @@ function exercisesFromRow(row) {
     name: row[`sport_typ_${slot}`],
     reps: row[`pocet_opakovani_${slot}`],
   })).filter((item) => String(item.name || "").trim() || (item.reps != null && item.reps !== ""));
-  if (slotted.length) return slotted;
-  return parseExercises(row.sport_2, row.pocet_opakovani);
+  return slotted;
 }
 
 function slotsAreEmpty(row) {
@@ -494,7 +492,6 @@ function toHabitRow(event, userId) {
     cas_od: time ? time.start : null,
     cas_do: time ? time.end : null,
     sport: details.sport || null,
-    sport_2: null,
     pocet_opakovani: null,
     vzdalenost: details.distance,
   };
