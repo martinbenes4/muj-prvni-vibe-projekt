@@ -161,8 +161,7 @@
               name="name"
               type="text"
               maxlength="80"
-              required
-              placeholder="Například ranní trénink"
+              placeholder="Volitelné, když vyplníš sport"
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
             />
           </div>
@@ -188,39 +187,15 @@
               class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
             ></ul>
           </div>
-          <div id="strength-wrap" class="relative hidden">
-            <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-strength">Druh posilování</label>
-            <input
-              id="habit-strength"
-              name="sport_2"
-              type="text"
-              maxlength="80"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded="false"
-              aria-controls="strength-suggestions"
-              autocomplete="off"
-              placeholder="Začni psát, třeba kliky nebo činky"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
-            <ul
-              id="strength-suggestions"
-              role="listbox"
-              hidden
-              class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
-            ></ul>
-          </div>
-          <div id="reps-wrap" class="hidden">
-            <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-reps">Počet opakování</label>
-            <input
-              id="habit-reps"
-              name="reps"
-              type="text"
-              inputmode="numeric"
-              maxlength="4"
-              placeholder="Například 20"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-            />
+          <div id="strength-wrap" class="hidden flex-col gap-3">
+            <div id="strength-rows" class="flex flex-col gap-3"></div>
+            <button
+              id="strength-add"
+              type="button"
+              class="self-start rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            >
+              Přidat další druh
+            </button>
           </div>
           <div id="distance-wrap" class="hidden">
             <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-distance">Vzdálenost v km</label>
@@ -315,7 +290,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-    <script src="sports.js?v=12"></script>
-    <script src="app.js?v=12"></script>
+    <script src="sports.js?v=13"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>

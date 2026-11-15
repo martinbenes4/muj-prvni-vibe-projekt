@@ -37,11 +37,9 @@ const timeClear = document.querySelector("#time-clear");
 const sportInput = document.querySelector("#habit-sport");
 const sportList = document.querySelector("#sport-suggestions");
 const strengthWrap = document.querySelector("#strength-wrap");
-const strengthInput = document.querySelector("#habit-strength");
-const strengthList = document.querySelector("#strength-suggestions");
-const repsWrap = document.querySelector("#reps-wrap");
+const strengthRows = document.querySelector("#strength-rows");
+const strengthAdd = document.querySelector("#strength-add");
 const distanceWrap = document.querySelector("#distance-wrap");
-const repsInput = document.querySelector("#habit-reps");
 const distanceInput = document.querySelector("#habit-distance");
 const metricError = document.querySelector("#metric-error");
 const SPORT_CATALOG = window.SPORT_CATALOG || [];
@@ -70,7 +68,7 @@ let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
 let pickerField = null;
 let sportField;
-let strengthField;
+let strengthRowSeq = 0;
 
 buildTimePicker();
 
@@ -150,24 +148,20 @@ sportField = createSuggestField({
     clearMetricError();
     syncMeasureFields();
     const measure = findSport(name)?.measure;
-    if (measure === "reps") strengthInput.focus();
+    if (measure === "reps") strengthRows.querySelector("[data-role=kind]")?.focus();
     if (measure === "distance") distanceInput.focus();
   },
 });
 
-strengthField = createSuggestField({
-  input: strengthInput,
-  list: strengthList,
-  catalog: () => STRENGTH_CATALOG,
-  optionPrefix: "strength-option",
-  onInput: () => clearMetricError(),
-  onChoose: () => repsInput.focus(),
+strengthAdd.addEventListener("click", () => {
+  const row = addStrengthRow();
+  row.querySelector("[data-role=kind]").focus();
 });
 
 document.addEventListener("click", (event) => {
   if (pickerField && !event.target.closest("#time-picker, #time-start, #time-end")) closePicker();
   if (!event.target.closest("#habit-sport, #sport-suggestions")) sportField.close();
-  if (!event.target.closest("#habit-strength, #strength-suggestions")) strengthField.close();
+  if (!event.target.closest("[data-role=kind], [data-role=suggestions]")) closeStrengthSuggestions();
 });
 
 timeClear.addEventListener("click", () => {
@@ -180,7 +174,10 @@ timeClear.addEventListener("click", () => {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const name = nameInput.value.trim();
-  if (!name) return;
+  if (!name && !sportInput.value.trim()) {
+    showMetricError("Vyplň název, nebo vyber sport.");
+    return;
+  }
   const hasStart = Boolean(parseTime(draftStart));
   const hasEnd = Boolean(parseTime(draftEnd));
   if ((hasStart || hasEnd) && !validRange(draftStart, draftEnd)) {
@@ -198,11 +195,9 @@ form.addEventListener("submit", (event) => {
   render();
   nameInput.value = "";
   sportInput.value = "";
-  strengthInput.value = "";
-  repsInput.value = "";
   distanceInput.value = "";
   sportField.close();
-  strengthField.close();
+  clearStrengthRows();
   syncMeasureFields();
   nameInput.focus();
 });
@@ -284,6 +279,7 @@ function toEvent(id, name, date, done, start = "", end = "", details = emptyDeta
     sport2: clean.sport2,
     reps: clean.reps,
     distance: clean.distance,
+    exercises: clean.exercises,
   };
 }
 
@@ -315,24 +311,26 @@ function isUuid(value) {
 }
 
 function emptyDetails() {
-  return { sport: "", sport2: "", reps: null, distance: null };
+  return { sport: "", sport2: "", reps: null, distance: null, exercises: [] };
 }
 
 function normalizeDetails(details) {
   const source = details || {};
   const sport = String(source.sport || "").trim().slice(0, 80);
-  const sport2 = String(source.sport2 || "").trim().slice(0, 80);
-  let reps = null;
+  const exercises = cleanExercises(source);
+  const sport2 = exercises.length ? encodeExercises(exercises) : "";
+  const reps = exercises.length === 1 ? exercises[0].reps : null;
+  let ignoredReps = null;
   if (source.reps != null && source.reps !== "") {
     const amount = Number(source.reps);
-    if (Number.isInteger(amount) && amount >= 1 && amount <= 9999) reps = amount;
+    if (Number.isInteger(amount) && amount >= 1 && amount <= 9999) ignoredReps = amount;
   }
   let distance = null;
   if (source.distance != null && source.distance !== "") {
     const amount = Math.round(Number(source.distance) * 10) / 10;
     if (amount >= 0.1 && amount <= 999) distance = amount;
   }
-  return { sport, sport2, reps, distance };
+  return { sport, sport2, reps: exercises.length ? reps : ignoredReps, distance, exercises };
 }
 
 function detailsFromSuffix(suffix, name) {
@@ -447,7 +445,7 @@ async function loadRemoteEvents() {
       if (columnDetails.distance == null && details.distance != null) timesNeedUpload = true;
       const packed = parsed.start || parsed.details.sport || parsed.details.reps != null || parsed.details.distance != null;
       const name = packed ? parsed.name : String(row.name || "");
-      if (!isValidDateKey(date) || !name.trim()) return null;
+      if (!isValidDateKey(date) || (!name.trim() && !details.sport && !details.exercises.length)) return null;
       return toEvent(String(row.id), name.trim(), date, row.completed === true, start, end, details);
     })
     .filter(Boolean);
@@ -709,14 +707,55 @@ function formatKm(amount) {
   return String(Math.round(amount * 10) / 10).replace(".", ",");
 }
 
+function displayTitle(item) {
+  return item.name || item.sport || "Aktivita";
+}
+
 function formatDetail(item) {
   const parts = [];
+  const title = displayTitle(item);
   if (item.start && item.end) parts.push(`${formatTime(item.start)}–${formatTime(item.end)}`);
-  if (item.sport && item.sport !== item.name) parts.push(item.sport);
-  if (item.sport2 && item.sport2 !== item.name) parts.push(item.sport2);
-  if (item.reps) parts.push(`${item.reps} opakování`);
+  if (item.sport && item.sport !== title) parts.push(item.sport);
+  if (item.exercises?.length) {
+    parts.push(item.exercises.map((entry) => `${entry.name} ${entry.reps} opakování`).join(", "));
+  } else if (item.reps) {
+    parts.push(`${item.reps} opakování`);
+  }
   if (item.distance) parts.push(`${formatKm(item.distance)} km`);
   return parts.join(" · ");
+}
+
+function parseExercises(sport2, reps) {
+  const text = String(sport2 || "").trim();
+  if (!text) return [];
+  if (text.includes("×")) {
+    return text
+      .split(";")
+      .map((part) => {
+        const match = part.trim().match(/^(.*)×(\d+)$/);
+        if (!match) return null;
+        return { name: match[1].trim(), reps: Number(match[2]) };
+      })
+      .filter(Boolean);
+  }
+  if (reps != null && reps !== "") return [{ name: text, reps }];
+  return [];
+}
+
+function encodeExercises(exercises) {
+  return exercises.map((item) => `${item.name}×${item.reps}`).join("; ");
+}
+
+function cleanExercises(source) {
+  const raw = Array.isArray(source.exercises) && source.exercises.length ? source.exercises : parseExercises(source.sport2, source.reps);
+  return raw
+    .map((item) => {
+      const name = String(item?.name || "").trim().slice(0, 80);
+      const reps = Number(item?.reps);
+      if (!name || !Number.isInteger(reps) || reps < 1 || reps > 9999) return null;
+      return { name, reps };
+    })
+    .filter(Boolean);
 }
 
 function foldSport(value) {
@@ -829,36 +868,131 @@ function createSuggestField({ input, list, catalog, optionPrefix, onInput, onCho
   return { close };
 }
 
+function fieldClass() {
+  return "w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500";
+}
+
+function addStrengthRow() {
+  const index = strengthRowSeq;
+  strengthRowSeq += 1;
+  const row = document.createElement("div");
+  row.className = "strength-row grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end";
+
+  const kindWrap = document.createElement("div");
+  kindWrap.className = "relative";
+  const kindLabel = document.createElement("label");
+  kindLabel.className = "mb-1 block text-sm text-slate-500 dark:text-slate-400";
+  kindLabel.textContent = "Druh posilování";
+  kindLabel.htmlFor = `strength-kind-${index}`;
+  const kindInput = document.createElement("input");
+  kindInput.id = `strength-kind-${index}`;
+  kindInput.dataset.role = "kind";
+  kindInput.type = "text";
+  kindInput.maxLength = 80;
+  kindInput.placeholder = "Začni psát, třeba kliky nebo činky";
+  kindInput.className = fieldClass();
+  kindInput.setAttribute("role", "combobox");
+  kindInput.setAttribute("aria-autocomplete", "list");
+  kindInput.setAttribute("aria-expanded", "false");
+  kindInput.autocomplete = "off";
+  const list = document.createElement("ul");
+  list.dataset.role = "suggestions";
+  list.hidden = true;
+  list.className = "absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700";
+  list.setAttribute("role", "listbox");
+  kindInput.setAttribute("aria-controls", `strength-suggestions-${index}`);
+  list.id = `strength-suggestions-${index}`;
+  kindWrap.append(kindLabel, kindInput, list);
+
+  const repsWrap = document.createElement("div");
+  const repsLabel = document.createElement("label");
+  repsLabel.className = "mb-1 block text-sm text-slate-500 dark:text-slate-400";
+  repsLabel.textContent = "Počet opakování";
+  repsLabel.htmlFor = `strength-reps-${index}`;
+  const repsInput = document.createElement("input");
+  repsInput.id = `strength-reps-${index}`;
+  repsInput.dataset.role = "reps";
+  repsInput.type = "text";
+  repsInput.inputMode = "numeric";
+  repsInput.maxLength = 4;
+  repsInput.placeholder = "20";
+  repsInput.className = fieldClass();
+  repsWrap.append(repsLabel, repsInput);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "rounded-xl px-3 py-3 text-sm font-medium text-slate-500 hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-300";
+  remove.textContent = "Odebrat";
+
+  row.append(kindWrap, repsWrap, remove);
+  strengthRows.append(row);
+  const field = createSuggestField({
+    input: kindInput,
+    list,
+    catalog: () => STRENGTH_CATALOG,
+    optionPrefix: `strength-option-${index}`,
+    onInput: () => clearMetricError(),
+    onChoose: () => repsInput.focus(),
+  });
+  row._field = field;
+  remove.addEventListener("click", () => {
+    field.close();
+    if (strengthRows.children.length === 1) {
+      kindInput.value = "";
+      repsInput.value = "";
+      return;
+    }
+    row.remove();
+  });
+  return row;
+}
+
+function closeStrengthSuggestions() {
+  strengthRows.querySelectorAll(".strength-row").forEach((row) => row._field?.close());
+}
+
+function clearStrengthRows() {
+  closeStrengthSuggestions();
+  strengthRows.replaceChildren();
+  strengthRowSeq = 0;
+}
+
 function syncMeasureFields() {
   const measure = findSport(sportInput.value)?.measure || "";
   const strength = measure === "reps";
   strengthWrap.classList.toggle("hidden", !strength);
-  repsWrap.classList.toggle("hidden", !strength);
+  strengthWrap.classList.toggle("flex", strength);
   distanceWrap.classList.toggle("hidden", measure !== "distance");
-  if (!strength) {
-    strengthInput.value = "";
-    strengthField.close();
-    repsInput.value = "";
-  }
+  if (strength && !strengthRows.children.length) addStrengthRow();
+  if (!strength) clearStrengthRows();
   if (measure !== "distance") distanceInput.value = "";
 }
 
 function readDraftDetails() {
   const match = findSport(sportInput.value);
   const measure = match?.measure || "";
-  const repsRaw = measure === "reps" ? repsInput.value.trim() : "";
   const distanceRaw = measure === "distance" ? distanceInput.value.trim().replace(",", ".") : "";
-  let sport2 = "";
+  const exercises = [];
   if (measure === "reps") {
-    const kind = findCatalogName(STRENGTH_CATALOG, strengthInput.value);
-    sport2 = kind || strengthInput.value.trim();
-    if (!sport2) {
-      showMetricError("Vyber druh posilování, třeba kliky.");
-      return null;
+    const rows = [...strengthRows.querySelectorAll(".strength-row")];
+    for (const row of rows) {
+      const kindRaw = row.querySelector("[data-role=kind]").value.trim();
+      const repsRaw = row.querySelector("[data-role=reps]").value.trim();
+      if (!kindRaw && !repsRaw) continue;
+      const kind = findCatalogName(STRENGTH_CATALOG, kindRaw) || kindRaw;
+      if (!kind) {
+        showMetricError("Vyber druh posilování, třeba kliky.");
+        return null;
+      }
+      const value = Number(repsRaw);
+      if (!/^\d+$/.test(repsRaw) || !Number.isInteger(value) || value < 1 || value > 9999) {
+        showMetricError(`U cviku ${kind} zadej počet opakování, třeba 20.`);
+        return null;
+      }
+      exercises.push({ name: kind, reps: value });
     }
-    const value = Number(repsRaw);
-    if (!/^\d+$/.test(repsRaw) || !Number.isInteger(value) || value < 1 || value > 9999) {
-      showMetricError("U posilování zadej počet opakování, třeba 20.");
+    if (!exercises.length) {
+      showMetricError("Přidej aspoň jeden druh posilování, třeba kliky.");
       return null;
     }
   }
@@ -871,8 +1005,7 @@ function readDraftDetails() {
   }
   return normalizeDetails({
     sport: match ? match.name : sportInput.value,
-    sport2,
-    reps: repsRaw ? Number(repsRaw) : null,
+    exercises,
     distance: distanceRaw ? Number(distanceRaw) : null,
   });
 }
@@ -1066,7 +1199,7 @@ function renderTimeline(items) {
 
       const name = document.createElement("p");
       name.className = done ? "truncate text-sm line-through" : "truncate text-sm font-medium";
-      name.textContent = item.name;
+      name.textContent = displayTitle(item);
       const time = document.createElement("p");
       time.className = done ? "text-xs tabular-nums" : "text-xs tabular-nums text-teal-50";
       time.textContent = formatDetail(item);
@@ -1091,7 +1224,7 @@ function renderTimeline(items) {
     row.className = item.done
       ? "rounded-xl bg-teal-700/15 px-3 py-2 text-sm text-slate-500 line-through ring-1 ring-teal-700/30 dark:text-slate-400"
       : "rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100";
-    row.textContent = formatDetail(item) ? `${item.name} · ${formatDetail(item)}` : item.name;
+    row.textContent = formatDetail(item) ? `${displayTitle(item)} · ${formatDetail(item)}` : displayTitle(item);
     timelineUntimed.append(row);
   });
 }
@@ -1143,9 +1276,9 @@ function render() {
       "aria-label",
       allowed
         ? item.done
-          ? `Zrušit splnění: ${item.name}`
-          : `Označit jako splněné: ${item.name}`
-        : `Budoucí aktivitu nejde označit jako hotovou: ${item.name}`,
+          ? `Zrušit splnění: ${displayTitle(item)}`
+          : `Označit jako splněné: ${displayTitle(item)}`
+        : `Budoucí aktivitu nejde označit jako hotovou: ${displayTitle(item)}`,
     );
     toggle.className = item.done
       ? "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-700 text-white"
@@ -1161,7 +1294,7 @@ function render() {
     title.className = item.done
       ? "text-base text-slate-400 line-through dark:text-slate-500"
       : "text-base font-medium text-slate-900 dark:text-slate-100";
-    title.textContent = item.name;
+    title.textContent = displayTitle(item);
     textWrap.append(title);
 
     const detail = formatDetail(item);
@@ -1176,7 +1309,7 @@ function render() {
     remove.type = "button";
     remove.dataset.action = "delete";
     remove.dataset.id = item.id;
-    remove.setAttribute("aria-label", `Smazat aktivitu: ${item.name}`);
+    remove.setAttribute("aria-label", `Smazat aktivitu: ${displayTitle(item)}`);
     remove.className =
       "rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-300";
     remove.textContent = "Smazat";
