@@ -35,9 +35,13 @@ const minuteGrid = document.querySelector("#minute-grid");
 const timeError = document.querySelector("#time-error");
 const timeClear = document.querySelector("#time-clear");
 const sportInput = document.querySelector("#habit-sport");
+const sportList = document.querySelector("#sport-suggestions");
+const repsWrap = document.querySelector("#reps-wrap");
+const distanceWrap = document.querySelector("#distance-wrap");
 const repsInput = document.querySelector("#habit-reps");
 const distanceInput = document.querySelector("#habit-distance");
 const metricError = document.querySelector("#metric-error");
+const SPORT_CATALOG = window.SPORT_CATALOG || [];
 const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
 const authEmail = document.querySelector("#auth-email");
@@ -61,6 +65,7 @@ let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
 let pickerField = null;
+let sportHighlight = 0;
 
 buildTimePicker();
 
@@ -128,9 +133,45 @@ minuteGrid.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  if (!pickerField) return;
-  if (event.target.closest("#time-picker, #time-start, #time-end")) return;
-  closePicker();
+  if (pickerField && !event.target.closest("#time-picker, #time-start, #time-end")) closePicker();
+  if (!event.target.closest("#habit-sport, #sport-suggestions")) closeSportSuggestions();
+});
+
+sportInput.addEventListener("input", () => {
+  sportHighlight = 0;
+  clearMetricError();
+  syncSportSuggestions();
+  syncMeasureFields();
+});
+
+sportInput.addEventListener("focus", () => {
+  syncSportSuggestions();
+});
+
+sportInput.addEventListener("keydown", (event) => {
+  const options = sportSuggestions(sportInput.value);
+  if (sportList.hidden || !options.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    sportHighlight = (sportHighlight + 1) % options.length;
+    syncSportSuggestions();
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    sportHighlight = (sportHighlight - 1 + options.length) % options.length;
+    syncSportSuggestions();
+  } else if (event.key === "Enter") {
+    event.preventDefault();
+    chooseSport(options[sportHighlight].name);
+  } else if (event.key === "Escape") {
+    closeSportSuggestions();
+  }
+});
+
+sportList.addEventListener("mousedown", (event) => {
+  const option = event.target.closest("[data-sport]");
+  if (!option) return;
+  event.preventDefault();
+  chooseSport(option.dataset.sport);
 });
 
 timeClear.addEventListener("click", () => {
@@ -163,6 +204,8 @@ form.addEventListener("submit", (event) => {
   sportInput.value = "";
   repsInput.value = "";
   distanceInput.value = "";
+  closeSportSuggestions();
+  syncMeasureFields();
   nameInput.focus();
 });
 
@@ -346,6 +389,19 @@ function mergedDetails(columnDetails, legacyDetails) {
   });
 }
 
+function sameText(sent, stored) {
+  return (sent || null) === (stored || null);
+}
+
+function sameNumber(sent, stored) {
+  if (sent == null && (stored == null || stored === "")) return true;
+  return Number(sent) === Number(stored);
+}
+
+function sameTime(sent, stored) {
+  return clockValue(sent) === clockValue(stored);
+}
+
 function cloudErrorText(error) {
   const code = error?.code || "";
   const message = String(error?.message || "");
@@ -418,10 +474,24 @@ async function persistRemoteEvents() {
   rememberTimes(events);
 
   if (rows.length) {
-    const { error } = await supabaseClient.from("habits").upsert(rows, { onConflict: "id" });
+    const { data, error } = await supabaseClient
+      .from("habits")
+      .upsert(rows, { onConflict: "id" })
+      .select("id,cas_od,cas_do,sport,pocet_opakovani,vzdalenost");
     if (version !== saveVersion) return;
     if (error) {
       syncMessage = cloudErrorText(error);
+      updateAuthUi();
+      return;
+    }
+    const storedById = new Map((data || []).map((row) => [row.id, row]));
+    const missing = rows.some((row) => {
+      const stored = storedById.get(row.id);
+      if (!stored) return false;
+      return !sameText(row.sport, stored.sport) || !sameNumber(row.pocet_opakovani, stored.pocet_opakovani) || !sameNumber(row.vzdalenost, stored.vzdalenost) || !sameTime(row.cas_od, stored.cas_od) || !sameTime(row.cas_do, stored.cas_do);
+    });
+    if (missing) {
+      syncMessage = "Aktivita se uložila, ale nové sloupce zůstaly prázdné.";
       updateAuthUi();
       return;
     }
@@ -641,17 +711,97 @@ function formatDetail(item) {
   return parts.join(" · ");
 }
 
+function foldSport(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function findSport(value) {
+  const key = foldSport(value);
+  if (!key) return null;
+  return SPORT_CATALOG.find((sport) => foldSport(sport.name) === key) || null;
+}
+
+function sportSuggestions(query) {
+  const key = foldSport(query);
+  if (!key) return [];
+  return SPORT_CATALOG.filter((sport) => foldSport(sport.name).includes(key))
+    .sort((a, b) => {
+      const aStart = foldSport(a.name).startsWith(key) ? 0 : 1;
+      const bStart = foldSport(b.name).startsWith(key) ? 0 : 1;
+      return aStart - bStart || a.name.localeCompare(b.name, "cs");
+    })
+    .slice(0, 8);
+}
+
+function closeSportSuggestions() {
+  sportList.hidden = true;
+  sportList.replaceChildren();
+  sportInput.setAttribute("aria-expanded", "false");
+  sportInput.removeAttribute("aria-activedescendant");
+}
+
+function chooseSport(name) {
+  sportInput.value = name;
+  sportHighlight = 0;
+  clearMetricError();
+  closeSportSuggestions();
+  syncMeasureFields();
+  const measure = findSport(name)?.measure;
+  if (measure === "reps") repsInput.focus();
+  if (measure === "distance") distanceInput.focus();
+}
+
+function syncSportSuggestions() {
+  const options = sportSuggestions(sportInput.value);
+  sportList.replaceChildren();
+  if (!options.length) {
+    closeSportSuggestions();
+    return;
+  }
+  sportHighlight = Math.min(sportHighlight, options.length - 1);
+  options.forEach((sport, index) => {
+    const option = document.createElement("li");
+    option.id = `sport-option-${index}`;
+    option.dataset.sport = sport.name;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(index === sportHighlight));
+    option.className =
+      index === sportHighlight
+        ? "cursor-pointer px-4 py-2 text-sm font-medium text-white bg-teal-700"
+        : "cursor-pointer px-4 py-2 text-sm text-slate-800 dark:text-slate-100";
+    option.textContent = sport.name;
+    sportList.append(option);
+  });
+  sportList.hidden = false;
+  sportInput.setAttribute("aria-expanded", "true");
+  sportInput.setAttribute("aria-activedescendant", `sport-option-${sportHighlight}`);
+}
+
+function syncMeasureFields() {
+  const measure = findSport(sportInput.value)?.measure || "";
+  repsWrap.classList.toggle("hidden", measure !== "reps");
+  distanceWrap.classList.toggle("hidden", measure !== "distance");
+  if (measure !== "reps") repsInput.value = "";
+  if (measure !== "distance") distanceInput.value = "";
+}
+
 function readDraftDetails() {
-  const repsRaw = repsInput.value.trim();
-  const distanceRaw = distanceInput.value.trim().replace(",", ".");
-  if (repsRaw) {
+  const match = findSport(sportInput.value);
+  const measure = match?.measure || "";
+  const repsRaw = measure === "reps" ? repsInput.value.trim() : "";
+  const distanceRaw = measure === "distance" ? distanceInput.value.trim().replace(",", ".") : "";
+  if (measure === "reps") {
     const value = Number(repsRaw);
     if (!/^\d+$/.test(repsRaw) || !Number.isInteger(value) || value < 1 || value > 9999) {
-      showMetricError("Zadej počet opakování jako celé číslo, třeba 20.");
+      showMetricError("U posilování zadej počet opakování, třeba 20.");
       return null;
     }
   }
-  if (distanceRaw) {
+  if (measure === "distance") {
     const value = Number(distanceRaw);
     if (!Number.isFinite(value) || value < 0.1 || value > 999) {
       showMetricError("Zadej vzdálenost v kilometrech, třeba 5,2.");
@@ -659,7 +809,7 @@ function readDraftDetails() {
     }
   }
   return normalizeDetails({
-    sport: sportInput.value,
+    sport: match ? match.name : sportInput.value,
     reps: repsRaw ? Number(repsRaw) : null,
     distance: distanceRaw ? Number(distanceRaw) : null,
   });

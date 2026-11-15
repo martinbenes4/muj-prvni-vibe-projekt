@@ -166,42 +166,51 @@
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
             />
           </div>
-          <div>
+          <div class="relative">
             <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-sport">Sport</label>
             <input
               id="habit-sport"
               name="sport"
               type="text"
               maxlength="80"
-              placeholder="Například fotbal, tenis nebo plavání"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="sport-suggestions"
+              autocomplete="off"
+              placeholder="Začni psát, třeba běh nebo posilování"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+            <ul
+              id="sport-suggestions"
+              role="listbox"
+              hidden
+              class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white py-1 shadow-lg ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700"
+            ></ul>
+          </div>
+          <div id="reps-wrap" class="hidden">
+            <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-reps">Počet opakování</label>
+            <input
+              id="habit-reps"
+              name="reps"
+              type="text"
+              inputmode="numeric"
+              maxlength="4"
+              placeholder="Například 20"
               class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-reps">Počet opakování</label>
-              <input
-                id="habit-reps"
-                name="reps"
-                type="text"
-                inputmode="numeric"
-                maxlength="4"
-                placeholder="Například 20"
-                class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-distance">Vzdálenost v km</label>
-              <input
-                id="habit-distance"
-                name="distance"
-                type="text"
-                inputmode="decimal"
-                maxlength="6"
-                placeholder="Například 5,2"
-                class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-              />
-            </div>
+          <div id="distance-wrap" class="hidden">
+            <label class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="habit-distance">Vzdálenost v km</label>
+            <input
+              id="habit-distance"
+              name="distance"
+              type="text"
+              inputmode="decimal"
+              maxlength="6"
+              placeholder="Například 5,2"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
           </div>
           <p id="metric-error" class="hidden text-sm text-rose-700 dark:text-rose-300"></p>
           <div class="grid grid-cols-2 gap-2">
@@ -284,6 +293,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-    <script src="app.js?v=10"></script>
+    <script src="sports.js?v=11"></script>
+    <script src="app.js?v=11"></script>
   </body>
 </html>
