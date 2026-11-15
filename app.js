@@ -33,10 +33,10 @@ const timePickerPreview = document.querySelector("#time-picker-preview");
 const hourGrid = document.querySelector("#hour-grid");
 const minuteGrid = document.querySelector("#minute-grid");
 const timeError = document.querySelector("#time-error");
-const metricKind = document.querySelector("#metric-kind");
-const metricAmountWrap = document.querySelector("#metric-amount-wrap");
-const metricAmountLabel = document.querySelector("#metric-amount-label");
-const metricAmountInput = document.querySelector("#metric-amount");
+const timeClear = document.querySelector("#time-clear");
+const sportInput = document.querySelector("#habit-sport");
+const repsInput = document.querySelector("#habit-reps");
+const distanceInput = document.querySelector("#habit-distance");
 const metricError = document.querySelector("#metric-error");
 const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
@@ -60,11 +60,9 @@ let timesNeedUpload = false;
 let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
-let draftKind = "";
 let pickerField = null;
 
 buildTimePicker();
-syncMetricControls();
 
 todayLabel.textContent = formatDate(selectedDate);
 applyTheme(document.documentElement.classList.contains("dark"));
@@ -135,37 +133,36 @@ document.addEventListener("click", (event) => {
   closePicker();
 });
 
-metricKind.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-kind]");
-  if (!button) return;
-  draftKind = draftKind === button.dataset.kind ? "" : button.dataset.kind;
-  clearMetricError();
-  syncMetricControls();
+timeClear.addEventListener("click", () => {
+  draftStart = "";
+  draftEnd = "";
+  closePicker();
+  clearTimeError();
 });
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const name = nameInput.value.trim();
   if (!name) return;
-  if (!validRange(draftStart, draftEnd)) {
+  const hasStart = Boolean(parseTime(draftStart));
+  const hasEnd = Boolean(parseTime(draftEnd));
+  if ((hasStart || hasEnd) && !validRange(draftStart, draftEnd)) {
     showTimeError("Čas do musí být později než čas od.");
     return;
   }
-  const metric = readDraftMetric();
-  if (!metric) return;
+  const details = readDraftDetails();
+  if (!details) return;
 
-  events.unshift(
-    toEvent(crypto.randomUUID(), name, selectedDate, false, draftStart, draftEnd, metric),
-  );
+  events.unshift(toEvent(crypto.randomUUID(), name, selectedDate, false, draftStart, draftEnd, details));
 
   saveEvents();
   clearTimeError();
   clearMetricError();
   render();
   nameInput.value = "";
-  metricAmountInput.value = "";
-  draftKind = "";
-  syncMetricControls();
+  sportInput.value = "";
+  repsInput.value = "";
+  distanceInput.value = "";
   nameInput.focus();
 });
 
@@ -232,8 +229,9 @@ function normalizeStoredItem(item) {
   return doneOn.map((date, index) => toEvent(index === 0 ? item.id : `${item.id}-${date}`, item.name, date, true));
 }
 
-function toEvent(id, name, date, done, start = "", end = "", metric = emptyMetric()) {
+function toEvent(id, name, date, done, start = "", end = "", details = emptyDetails()) {
   const time = validRange(start, end);
+  const clean = normalizeDetails(details);
   return {
     id,
     name,
@@ -241,7 +239,9 @@ function toEvent(id, name, date, done, start = "", end = "", metric = emptyMetri
     done: canComplete(date) && done,
     start: time ? time.start : "",
     end: time ? time.end : "",
-    metric: normalizeMetric(metric),
+    sport: clean.sport,
+    reps: clean.reps,
+    distance: clean.distance,
   };
 }
 
@@ -272,63 +272,50 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function emptyMetric() {
-  return { kind: "", amount: null };
+function emptyDetails() {
+  return { sport: "", reps: null, distance: null };
 }
 
-function normalizeMetric(metric) {
-  if (!metric || metric.kind === "sport") return metric?.kind === "sport" ? { kind: "sport", amount: null } : emptyMetric();
-  if (metric.kind === "reps") {
-    const amount = Number(metric.amount);
-    if (Number.isInteger(amount) && amount >= 1 && amount <= 9999) return { kind: "reps", amount };
+function normalizeDetails(details) {
+  const source = details || {};
+  const sport = String(source.sport || "").trim().slice(0, 80);
+  let reps = null;
+  if (source.reps != null && source.reps !== "") {
+    const amount = Number(source.reps);
+    if (Number.isInteger(amount) && amount >= 1 && amount <= 9999) reps = amount;
   }
-  if (metric.kind === "distance") {
-    const amount = Math.round(Number(metric.amount) * 10) / 10;
-    if (amount >= 0.1 && amount <= 999) return { kind: "distance", amount };
+  let distance = null;
+  if (source.distance != null && source.distance !== "") {
+    const amount = Math.round(Number(source.distance) * 10) / 10;
+    if (amount >= 0.1 && amount <= 999) distance = amount;
   }
-  return emptyMetric();
+  return { sport, reps, distance };
 }
 
-function metricFromSuffix(suffix) {
-  if (suffix === "s") return { kind: "sport", amount: null };
+function detailsFromSuffix(suffix, name) {
+  if (suffix === "s") return normalizeDetails({ sport: name });
   const reps = String(suffix || "").match(/^r:(\d+)$/);
-  if (reps) return normalizeMetric({ kind: "reps", amount: Number(reps[1]) });
+  if (reps) return normalizeDetails({ reps: Number(reps[1]) });
   const distance = String(suffix || "").match(/^d:(\d+(?:\.\d+)?)$/);
-  if (distance) return normalizeMetric({ kind: "distance", amount: Number(distance[1]) });
-  return emptyMetric();
-}
-
-function metricSuffix(metric) {
-  const clean = normalizeMetric(metric);
-  if (clean.kind === "reps") return `r:${clean.amount}`;
-  if (clean.kind === "distance") return `d:${clean.amount}`;
-  if (clean.kind === "sport") return "s";
-  return "";
+  if (distance) return normalizeDetails({ distance: Number(distance[1]) });
+  return emptyDetails();
 }
 
 function splitStoredName(stored) {
   const text = String(stored);
   const parts = text.split("\u001f");
   if (parts.length === 3 && validRange(parts[1], parts[2])) {
-    return { name: parts[0], start: parts[1], end: parts[2], metric: emptyMetric() };
+    return { name: parts[0], start: parts[1], end: parts[2], details: emptyDetails() };
   }
   const match = text.match(/^(.*)\|([0-9]{1,2}):([0-5][0-9])-([0-9]{1,2}):([0-5][0-9])\|(r:\d+|d:\d+(?:\.\d+)?|s)?$/);
   if (match) {
     const start = toTimeValue(Number(match[2]), Number(match[3]));
     const end = toTimeValue(Number(match[4]), Number(match[5]));
     if (validRange(start, end)) {
-      return { name: match[1], start, end, metric: metricFromSuffix(match[6]) };
+      return { name: match[1], start, end, details: detailsFromSuffix(match[6], match[1]) };
     }
   }
-  return { name: text, start: "", end: "", metric: emptyMetric() };
-}
-
-function storedName(event) {
-  const time = validRange(event.start, event.end);
-  const name = splitStoredName(event.name).name;
-  if (!time) return name;
-  const suffix = metricSuffix(event.metric);
-  return suffix ? `${name}|${time.start}-${time.end}|${suffix}` : `${name}|${time.start}-${time.end}|`;
+  return { name: text, start: "", end: "", details: emptyDetails() };
 }
 
 function clockValue(value) {
@@ -339,19 +326,35 @@ function clockValue(value) {
   return toTimeValue(hour, Number(match[2]));
 }
 
-function metricFromColumns(row) {
-  if (row.pocet_opakovani != null && row.pocet_opakovani !== "") {
-    return normalizeMetric({ kind: "reps", amount: Number(row.pocet_opakovani) });
-  }
-  if (row.vzdalenost != null && row.vzdalenost !== "") {
-    return normalizeMetric({ kind: "distance", amount: Number(row.vzdalenost) });
-  }
-  if (typeof row.sport === "string" && row.sport.trim()) return { kind: "sport", amount: null };
-  return emptyMetric();
+function detailsFromColumns(row) {
+  return normalizeDetails({
+    sport: row.sport,
+    reps: row.pocet_opakovani,
+    distance: row.vzdalenost,
+  });
 }
 
 function plainName(event) {
   return splitStoredName(event.name).name.trim();
+}
+
+function mergedDetails(columnDetails, legacyDetails) {
+  return normalizeDetails({
+    sport: columnDetails.sport || legacyDetails.sport,
+    reps: columnDetails.reps == null ? legacyDetails.reps : columnDetails.reps,
+    distance: columnDetails.distance == null ? legacyDetails.distance : columnDetails.distance,
+  });
+}
+
+function cloudErrorText(error) {
+  const code = error?.code || "";
+  const message = String(error?.message || "");
+  if (code === "23502") return "Tabulka vyžaduje hodnotu ve sloupci, který zůstává prázdný.";
+  if (code === "42501" && /column/i.test(message)) return "K novým sloupcům chybí oprávnění pro zápis.";
+  if (code === "42501") return "Databáze zápis této aktivity odmítla.";
+  if (code === "22P02" || code === "22007") return "Některá hodnota neodpovídá typu sloupce.";
+  if (code === "PGRST204") return "Supabase ještě nevidí nové sloupce. V nastavení API obnov schéma.";
+  return "Uložení do cloudu se nepovedlo.";
 }
 
 async function loadRemoteEvents() {
@@ -372,48 +375,53 @@ async function loadRemoteEvents() {
       const parsed = splitStoredName(row.name);
       const cached = times[row.id] || {};
       const columnTime = validRange(clockValue(row.cas_od), clockValue(row.cas_do));
-      const columnMetric = metricFromColumns(row);
+      const columnDetails = detailsFromColumns(row);
+      const details = mergedDetails(columnDetails, parsed.details);
       const start = columnTime ? columnTime.start : parsed.start || cached.start || "";
       const end = columnTime ? columnTime.end : parsed.end || cached.end || "";
-      const metric = columnMetric.kind ? columnMetric : parsed.metric;
       if (!columnTime && validRange(start, end)) timesNeedUpload = true;
-      if (!columnMetric.kind && metric.kind) timesNeedUpload = true;
-      const name = parsed.start || parsed.metric.kind ? parsed.name : String(row.name || "");
+      if (!columnDetails.sport && details.sport) timesNeedUpload = true;
+      if (columnDetails.reps == null && details.reps != null) timesNeedUpload = true;
+      if (columnDetails.distance == null && details.distance != null) timesNeedUpload = true;
+      const packed = parsed.start || parsed.details.sport || parsed.details.reps != null || parsed.details.distance != null;
+      const name = packed ? parsed.name : String(row.name || "");
       if (!isValidDateKey(date) || !name.trim()) return null;
-      return toEvent(String(row.id), name.trim(), date, row.completed === true, start, end, metric);
+      return toEvent(String(row.id), name.trim(), date, row.completed === true, start, end, details);
     })
     .filter(Boolean);
+}
+
+function toHabitRow(event, userId) {
+  const time = validRange(event.start, event.end);
+  const details = normalizeDetails(event);
+  return {
+    id: event.id,
+    user_id: userId,
+    name: plainName(event),
+    date: event.date,
+    completed: Boolean(event.done),
+    cas_od: time ? time.start : null,
+    cas_do: time ? time.end : null,
+    sport: details.sport || null,
+    pocet_opakovani: details.reps,
+    vzdalenost: details.distance,
+  };
 }
 
 async function persistRemoteEvents() {
   const version = ++saveVersion;
   const userId = session.user.id;
-  const rows = events.map((event) => {
-    const id = isUuid(event.id) ? event.id : crypto.randomUUID();
-    if (event.id !== id) event.id = id;
-    const time = validRange(event.start, event.end);
-    const metric = normalizeMetric(event.metric);
-    const name = plainName(event);
-    return {
-      id,
-      user_id: userId,
-      name,
-      date: event.date,
-      completed: Boolean(event.done),
-      cas_od: time ? time.start : null,
-      cas_do: time ? time.end : null,
-      sport: metric.kind === "sport" ? name : null,
-      pocet_opakovani: metric.kind === "reps" ? metric.amount : null,
-      vzdalenost: metric.kind === "distance" ? metric.amount : null,
-    };
+  events.forEach((event) => {
+    if (!isUuid(event.id)) event.id = crypto.randomUUID();
   });
+  const rows = events.map((event) => toHabitRow(event, userId));
   rememberTimes(events);
 
   if (rows.length) {
     const { error } = await supabaseClient.from("habits").upsert(rows, { onConflict: "id" });
     if (version !== saveVersion) return;
     if (error) {
-      syncMessage = "Uložení do cloudu se nepovedlo.";
+      syncMessage = cloudErrorText(error);
       updateAuthUi();
       return;
     }
@@ -423,7 +431,7 @@ async function persistRemoteEvents() {
   if (rows.length) removal = removal.not("id", "in", `(${rows.map((row) => row.id).join(",")})`);
   const { error: deleteError } = await removal;
   if (version !== saveVersion) return;
-  syncMessage = deleteError ? "Uložení do cloudu se nepovedlo." : "";
+  syncMessage = deleteError ? cloudErrorText(deleteError) : "";
   updateAuthUi();
 }
 
@@ -624,39 +632,37 @@ function formatKm(amount) {
   return String(Math.round(amount * 10) / 10).replace(".", ",");
 }
 
-function formatMetric(metric) {
-  const clean = normalizeMetric(metric);
-  if (clean.kind === "reps") return `${clean.amount} opakování`;
-  if (clean.kind === "distance") return `${formatKm(clean.amount)} km`;
-  if (clean.kind === "sport") return "Sport";
-  return "";
-}
-
 function formatDetail(item) {
   const parts = [];
   if (item.start && item.end) parts.push(`${formatTime(item.start)}–${formatTime(item.end)}`);
-  const metric = formatMetric(item.metric);
-  if (metric) parts.push(metric);
+  if (item.sport && item.sport !== item.name) parts.push(item.sport);
+  if (item.reps) parts.push(`${item.reps} opakování`);
+  if (item.distance) parts.push(`${formatKm(item.distance)} km`);
   return parts.join(" · ");
 }
 
-function readDraftMetric() {
-  if (!draftKind) return emptyMetric();
-  if (draftKind === "sport") return { kind: "sport", amount: null };
-  const raw = metricAmountInput.value.trim().replace(",", ".");
-  const value = Number(raw);
-  if (draftKind === "reps") {
-    if (!Number.isInteger(value) || value < 1 || value > 9999) {
-      showMetricError("Zadej počet opakování, třeba 20.");
+function readDraftDetails() {
+  const repsRaw = repsInput.value.trim();
+  const distanceRaw = distanceInput.value.trim().replace(",", ".");
+  if (repsRaw) {
+    const value = Number(repsRaw);
+    if (!/^\d+$/.test(repsRaw) || !Number.isInteger(value) || value < 1 || value > 9999) {
+      showMetricError("Zadej počet opakování jako celé číslo, třeba 20.");
       return null;
     }
-    return { kind: "reps", amount: value };
   }
-  if (!Number.isFinite(value) || value < 0.1 || value > 999) {
-    showMetricError("Zadej vzdálenost v kilometrech, třeba 5,2.");
-    return null;
+  if (distanceRaw) {
+    const value = Number(distanceRaw);
+    if (!Number.isFinite(value) || value < 0.1 || value > 999) {
+      showMetricError("Zadej vzdálenost v kilometrech, třeba 5,2.");
+      return null;
+    }
   }
-  return { kind: "distance", amount: Math.round(value * 10) / 10 };
+  return normalizeDetails({
+    sport: sportInput.value,
+    reps: repsRaw ? Number(repsRaw) : null,
+    distance: distanceRaw ? Number(distanceRaw) : null,
+  });
 }
 
 function showMetricError(message) {
@@ -669,44 +675,10 @@ function clearMetricError() {
   metricError.classList.add("hidden");
 }
 
-function syncMetricControls() {
-  metricKind.querySelectorAll("[data-kind]").forEach((button) => {
-    const selected = button.dataset.kind === draftKind;
-    button.setAttribute("aria-pressed", String(selected));
-    button.className = selected
-      ? "rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
-      : "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
-  });
-  const needsAmount = draftKind === "reps" || draftKind === "distance";
-  metricAmountWrap.classList.toggle("hidden", !needsAmount);
-  if (draftKind === "reps") {
-    metricAmountLabel.textContent = "Počet opakování";
-    metricAmountInput.type = "number";
-    metricAmountInput.min = "1";
-    metricAmountInput.max = "9999";
-    metricAmountInput.step = "1";
-    metricAmountInput.inputMode = "numeric";
-    metricAmountInput.placeholder = "Například 20 kliků nebo sklapovaček";
-    nameInput.placeholder = "Například kliky, sklapovačky, činka";
-  } else if (draftKind === "distance") {
-    metricAmountLabel.textContent = "Vzdálenost v kilometrech";
-    metricAmountInput.type = "text";
-    metricAmountInput.min = "0.1";
-    metricAmountInput.max = "999";
-    metricAmountInput.step = "0.1";
-    metricAmountInput.inputMode = "decimal";
-    metricAmountInput.placeholder = "Například 5,2";
-    nameInput.placeholder = "Například běh nebo kolo";
-  } else if (draftKind === "sport") {
-    nameInput.placeholder = "Například fotbal, tenis, plavání";
-  } else {
-    nameInput.placeholder = "Například kliky, běh nebo fotbal";
-  }
-}
-
 function formatTime(value) {
-  const [hour, minute] = value.split(":");
-  return `${Number(hour)}:${minute}`;
+  const parsed = parseTime(value);
+  if (!parsed) return "—";
+  return `${parsed.hour}:${String(parsed.minute).padStart(2, "0")}`;
 }
 
 function parseTime(value) {
@@ -738,7 +710,15 @@ function setDraft(value) {
 }
 
 function openPicker(field) {
-  pickerField = pickerField === field ? null : field;
+  if (pickerField === field) {
+    pickerField = null;
+    syncTimeControls();
+    return;
+  }
+  pickerField = field;
+  const range = initialRange();
+  if (field === "start" && !parseTime(draftStart)) draftStart = range.start;
+  if (field === "end" && !parseTime(draftEnd)) draftEnd = range.end;
   syncTimeControls();
 }
 
@@ -919,8 +899,8 @@ function render() {
   dateInput.value = selectedDate;
   syncTimeControls();
   dateToday.classList.toggle("hidden", selectedDate === today);
-  dateHint.textContent = future ? "Budoucí událost lze zapsat, ale jako hotovou ji označíš až v ten den." : "";
-  listHeading.textContent = selectedDate === today ? "Dnešní události" : "Události";
+  dateHint.textContent = future ? "Budoucí aktivitu lze zapsat, ale jako hotovou ji označíš až v ten den." : "";
+  listHeading.textContent = selectedDate === today ? "Dnešní aktivity" : "Aktivity";
   progressLabel.textContent = visible.length
     ? future
       ? `Naplánováno ${visible.length}`
@@ -929,7 +909,7 @@ function render() {
   emptyState.textContent = future
     ? "V tento den zatím nic není. Můžeš sem zapsat, co teprve bude."
     : selectedDate === today
-      ? "V tento den zatím nic není. Přidej událost."
+      ? "V tento den zatím nic není. Přidej aktivitu."
       : "V tento den zatím nic není. Můžeš doplnit, co se stalo.";
   emptyState.classList.toggle("hidden", visible.length > 0);
   renderTimeline(visible);
@@ -953,7 +933,7 @@ function render() {
         ? item.done
           ? `Zrušit splnění: ${item.name}`
           : `Označit jako splněné: ${item.name}`
-        : `Budoucí událost nejde označit jako hotovou: ${item.name}`,
+        : `Budoucí aktivitu nejde označit jako hotovou: ${item.name}`,
     );
     toggle.className = item.done
       ? "grid h-10 w-10 shrink-0 place-items-center rounded-full bg-teal-700 text-white"
@@ -972,15 +952,11 @@ function render() {
     title.textContent = item.name;
     textWrap.append(title);
 
-    if (item.start && item.end) {
-      const time = document.createElement("p");
-      time.className = "text-sm tabular-nums text-slate-500 dark:text-slate-400";
-      time.textContent = formatDetail(item);
-      textWrap.append(time);
-    } else if (formatMetric(item.metric)) {
+    const detail = formatDetail(item);
+    if (detail) {
       const time = document.createElement("p");
       time.className = "text-sm text-slate-500 dark:text-slate-400";
-      time.textContent = formatMetric(item.metric);
+      time.textContent = detail;
       textWrap.append(time);
     }
 
@@ -988,7 +964,7 @@ function render() {
     remove.type = "button";
     remove.dataset.action = "delete";
     remove.dataset.id = item.id;
-    remove.setAttribute("aria-label", `Smazat událost: ${item.name}`);
+    remove.setAttribute("aria-label", `Smazat aktivitu: ${item.name}`);
     remove.className =
       "rounded-lg px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-slate-400 dark:hover:bg-rose-950 dark:hover:text-rose-300";
     remove.textContent = "Smazat";
