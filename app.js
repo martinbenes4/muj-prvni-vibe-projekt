@@ -44,6 +44,21 @@ const distanceInput = document.querySelector("#habit-distance");
 const metricError = document.querySelector("#metric-error");
 const SPORT_CATALOG = window.SPORT_CATALOG || [];
 const STRENGTH_CATALOG = window.STRENGTH_CATALOG || [];
+const MAX_EXERCISES = 10;
+const EXERCISE_SLOTS = Array.from({ length: MAX_EXERCISES }, (_, index) => String(index + 1).padStart(2, "0"));
+const HABIT_COLUMNS = [
+  "id",
+  "name",
+  "date",
+  "completed",
+  "cas_od",
+  "cas_do",
+  "sport",
+  "sport_2",
+  "pocet_opakovani",
+  "vzdalenost",
+  ...EXERCISE_SLOTS.flatMap((slot) => [`sport_typ_${slot}`, `pocet_opakovani_${slot}`]),
+].join(",");
 const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
 const authEmail = document.querySelector("#auth-email");
@@ -154,7 +169,9 @@ sportField = createSuggestField({
 });
 
 strengthAdd.addEventListener("click", () => {
+  if (strengthRows.children.length >= MAX_EXERCISES) return;
   const row = addStrengthRow();
+  syncStrengthAdd();
   row.querySelector("[data-role=kind]").focus();
 });
 
@@ -317,7 +334,7 @@ function emptyDetails() {
 function normalizeDetails(details) {
   const source = details || {};
   const sport = String(source.sport || "").trim().slice(0, 80);
-  const exercises = cleanExercises(source);
+  const exercises = cleanExercises(source).slice(0, MAX_EXERCISES);
   const sport2 = exercises.length ? encodeExercises(exercises) : "";
   const reps = exercises.length === 1 ? exercises[0].reps : null;
   let ignoredReps = null;
@@ -367,11 +384,27 @@ function clockValue(value) {
   return toTimeValue(hour, Number(match[2]));
 }
 
+function exercisesFromRow(row) {
+  const slotted = EXERCISE_SLOTS.map((slot) => ({
+    name: row[`sport_typ_${slot}`],
+    reps: row[`pocet_opakovani_${slot}`],
+  })).filter((item) => String(item.name || "").trim() || (item.reps != null && item.reps !== ""));
+  if (slotted.length) return slotted;
+  return parseExercises(row.sport_2, row.pocet_opakovani);
+}
+
+function slotsAreEmpty(row) {
+  return EXERCISE_SLOTS.every((slot) => {
+    const name = String(row[`sport_typ_${slot}`] || "").trim();
+    const reps = row[`pocet_opakovani_${slot}`];
+    return !name && (reps == null || reps === "");
+  });
+}
+
 function detailsFromColumns(row) {
   return normalizeDetails({
     sport: row.sport,
-    sport2: row.sport_2,
-    reps: row.pocet_opakovani,
+    exercises: exercisesFromRow(row),
     distance: row.vzdalenost,
   });
 }
@@ -383,8 +416,7 @@ function plainName(event) {
 function mergedDetails(columnDetails, legacyDetails) {
   return normalizeDetails({
     sport: columnDetails.sport || legacyDetails.sport,
-    sport2: columnDetails.sport2 || legacyDetails.sport2,
-    reps: columnDetails.reps == null ? legacyDetails.reps : columnDetails.reps,
+    exercises: columnDetails.exercises.length ? columnDetails.exercises : legacyDetails.exercises,
     distance: columnDetails.distance == null ? legacyDetails.distance : columnDetails.distance,
   });
 }
@@ -409,8 +441,8 @@ function cloudErrorText(error) {
   if (code === "42501" && /column/i.test(message)) return "K novým sloupcům chybí oprávnění pro zápis.";
   if (code === "42501") return "Databáze zápis této aktivity odmítla.";
   if (code === "22P02" || code === "22007") return "Některá hodnota neodpovídá typu sloupce.";
-  if (code === "PGRST204" && /sport_2/i.test(message)) {
-    return "V tabulce habits chybí sloupec sport_2. Přidej ho v SQL editoru Supabase.";
+  if (code === "PGRST204" && /sport_typ_|pocet_opakovani_/i.test(message)) {
+    return "V tabulce habits chybí sloupce sport_typ_01 až sport_typ_10 a pocet_opakovani_01 až pocet_opakovani_10.";
   }
   if (code === "PGRST204") return "Supabase ještě nevidí nové sloupce. V nastavení API obnov schéma.";
   return "Uložení do cloudu se nepovedlo.";
@@ -420,7 +452,7 @@ async function loadRemoteEvents() {
   const times = readTimeCache();
   const { data, error } = await supabaseClient
     .from("habits")
-    .select("id,name,date,completed,cas_od,cas_do,sport,sport_2,pocet_opakovani,vzdalenost")
+    .select(HABIT_COLUMNS)
     .eq("user_id", session.user.id);
   if (error) {
     syncMessage = "Návyky se z cloudu nepodařilo načíst.";
@@ -440,8 +472,7 @@ async function loadRemoteEvents() {
       const end = columnTime ? columnTime.end : parsed.end || cached.end || "";
       if (!columnTime && validRange(start, end)) timesNeedUpload = true;
       if (!columnDetails.sport && details.sport) timesNeedUpload = true;
-      if (!columnDetails.sport2 && details.sport2) timesNeedUpload = true;
-      if (columnDetails.reps == null && details.reps != null) timesNeedUpload = true;
+      if (slotsAreEmpty(row) && details.exercises.length) timesNeedUpload = true;
       if (columnDetails.distance == null && details.distance != null) timesNeedUpload = true;
       const packed = parsed.start || parsed.details.sport || parsed.details.reps != null || parsed.details.distance != null;
       const name = packed ? parsed.name : String(row.name || "");
@@ -454,7 +485,7 @@ async function loadRemoteEvents() {
 function toHabitRow(event, userId) {
   const time = validRange(event.start, event.end);
   const details = normalizeDetails(event);
-  return {
+  const row = {
     id: event.id,
     user_id: userId,
     name: plainName(event),
@@ -463,10 +494,24 @@ function toHabitRow(event, userId) {
     cas_od: time ? time.start : null,
     cas_do: time ? time.end : null,
     sport: details.sport || null,
-    sport_2: details.sport2 || null,
-    pocet_opakovani: details.reps,
+    sport_2: null,
+    pocet_opakovani: null,
     vzdalenost: details.distance,
   };
+  EXERCISE_SLOTS.forEach((slot, index) => {
+    const exercise = details.exercises[index];
+    row[`sport_typ_${slot}`] = exercise ? exercise.name : null;
+    row[`pocet_opakovani_${slot}`] = exercise ? exercise.reps : null;
+  });
+  return row;
+}
+
+function sameExerciseSlots(sent, stored) {
+  return EXERCISE_SLOTS.every(
+    (slot) =>
+      sameText(sent[`sport_typ_${slot}`], stored[`sport_typ_${slot}`]) &&
+      sameNumber(sent[`pocet_opakovani_${slot}`], stored[`pocet_opakovani_${slot}`]),
+  );
 }
 
 async function persistRemoteEvents() {
@@ -482,7 +527,7 @@ async function persistRemoteEvents() {
     const { data, error } = await supabaseClient
       .from("habits")
       .upsert(rows, { onConflict: "id" })
-      .select("id,cas_od,cas_do,sport,sport_2,pocet_opakovani,vzdalenost");
+      .select(HABIT_COLUMNS);
     if (version !== saveVersion) return;
     if (error) {
       syncMessage = cloudErrorText(error);
@@ -493,7 +538,7 @@ async function persistRemoteEvents() {
     const missing = rows.some((row) => {
       const stored = storedById.get(row.id);
       if (!stored) return false;
-      return !sameText(row.sport, stored.sport) || !sameText(row.sport_2, stored.sport_2) || !sameNumber(row.pocet_opakovani, stored.pocet_opakovani) || !sameNumber(row.vzdalenost, stored.vzdalenost) || !sameTime(row.cas_od, stored.cas_od) || !sameTime(row.cas_do, stored.cas_do);
+      return !sameText(row.sport, stored.sport) || !sameExerciseSlots(row, stored) || !sameNumber(row.vzdalenost, stored.vzdalenost) || !sameTime(row.cas_od, stored.cas_od) || !sameTime(row.cas_do, stored.cas_do);
     });
     if (missing) {
       syncMessage = "Aktivita se uložila, ale nové sloupce zůstaly prázdné.";
@@ -943,8 +988,14 @@ function addStrengthRow() {
       return;
     }
     row.remove();
+    syncStrengthAdd();
   });
+  syncStrengthAdd();
   return row;
+}
+
+function syncStrengthAdd() {
+  strengthAdd.classList.toggle("hidden", strengthRows.children.length >= MAX_EXERCISES);
 }
 
 function closeStrengthSuggestions() {
@@ -955,6 +1006,7 @@ function clearStrengthRows() {
   closeStrengthSuggestions();
   strengthRows.replaceChildren();
   strengthRowSeq = 0;
+  syncStrengthAdd();
 }
 
 function syncMeasureFields() {
@@ -990,6 +1042,10 @@ function readDraftDetails() {
         return null;
       }
       exercises.push({ name: kind, reps: value });
+    }
+    if (exercises.length > MAX_EXERCISES) {
+      showMetricError("Do jednoho záznamu jde přidat nejvýš 10 cviků.");
+      return null;
     }
     if (!exercises.length) {
       showMetricError("Přidej aspoň jeden druh posilování, třeba kliky.");
