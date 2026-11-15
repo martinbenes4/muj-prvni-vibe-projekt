@@ -580,8 +580,11 @@ function authErrorText(error, fallback) {
   if (code === "over_email_send_rate_limit" || code === "over_request_rate_limit") {
     return "E-mail se teď nepodařilo odeslat. Zkus to za chvíli.";
   }
-  if (code === "user_already_exists") return "Účet s tímto e-mailem už existuje. Přihlas se.";
   return fallback;
+}
+
+function showSignupPending() {
+  showAuthMessage("Účet je založený. Než půjde aplikaci použít, potvrď ho odkazem v e-mailu a pak se přihlas.", false);
 }
 
 async function signInWithGoogle() {
@@ -636,16 +639,15 @@ async function signUp() {
     },
   });
   if (error) {
+    if (error.code === "user_already_exists") {
+      showSignupPending();
+      return;
+    }
     showAuthMessage(authErrorText(error, "Účet se nepodařilo vytvořit. Zkus jiný e-mail nebo delší heslo."), true);
     return;
   }
-  const identities = data.user?.identities;
-  if (data.user && Array.isArray(identities) && identities.length === 0) {
-    showAuthMessage("Účet s tímto e-mailem už existuje. Přihlas se.", true);
-    return;
-  }
   if (!data.session) {
-    showAuthMessage("Účet je založený. Než půjde aplikaci použít, potvrď ho odkazem v e-mailu a pak se přihlas.", false);
+    showSignupPending();
     return;
   }
   closeAuthModal();
