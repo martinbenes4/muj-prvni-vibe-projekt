@@ -36,12 +36,16 @@ const timeError = document.querySelector("#time-error");
 const timeClear = document.querySelector("#time-clear");
 const sportInput = document.querySelector("#habit-sport");
 const sportList = document.querySelector("#sport-suggestions");
+const strengthWrap = document.querySelector("#strength-wrap");
+const strengthInput = document.querySelector("#habit-strength");
+const strengthList = document.querySelector("#strength-suggestions");
 const repsWrap = document.querySelector("#reps-wrap");
 const distanceWrap = document.querySelector("#distance-wrap");
 const repsInput = document.querySelector("#habit-reps");
 const distanceInput = document.querySelector("#habit-distance");
 const metricError = document.querySelector("#metric-error");
 const SPORT_CATALOG = window.SPORT_CATALOG || [];
+const STRENGTH_CATALOG = window.STRENGTH_CATALOG || [];
 const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
 const authEmail = document.querySelector("#auth-email");
@@ -65,7 +69,8 @@ let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
 let pickerField = null;
-let sportHighlight = 0;
+let sportField;
+let strengthField;
 
 buildTimePicker();
 
@@ -132,46 +137,37 @@ minuteGrid.addEventListener("click", (event) => {
   setDraft(toTimeValue(current.hour, Number(button.dataset.minute)));
 });
 
+sportField = createSuggestField({
+  input: sportInput,
+  list: sportList,
+  catalog: () => SPORT_CATALOG.map((sport) => sport.name),
+  optionPrefix: "sport-option",
+  onInput: () => {
+    clearMetricError();
+    syncMeasureFields();
+  },
+  onChoose: (name) => {
+    clearMetricError();
+    syncMeasureFields();
+    const measure = findSport(name)?.measure;
+    if (measure === "reps") strengthInput.focus();
+    if (measure === "distance") distanceInput.focus();
+  },
+});
+
+strengthField = createSuggestField({
+  input: strengthInput,
+  list: strengthList,
+  catalog: () => STRENGTH_CATALOG,
+  optionPrefix: "strength-option",
+  onInput: () => clearMetricError(),
+  onChoose: () => repsInput.focus(),
+});
+
 document.addEventListener("click", (event) => {
   if (pickerField && !event.target.closest("#time-picker, #time-start, #time-end")) closePicker();
-  if (!event.target.closest("#habit-sport, #sport-suggestions")) closeSportSuggestions();
-});
-
-sportInput.addEventListener("input", () => {
-  sportHighlight = 0;
-  clearMetricError();
-  syncSportSuggestions();
-  syncMeasureFields();
-});
-
-sportInput.addEventListener("focus", () => {
-  syncSportSuggestions();
-});
-
-sportInput.addEventListener("keydown", (event) => {
-  const options = sportSuggestions(sportInput.value);
-  if (sportList.hidden || !options.length) return;
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    sportHighlight = (sportHighlight + 1) % options.length;
-    syncSportSuggestions();
-  } else if (event.key === "ArrowUp") {
-    event.preventDefault();
-    sportHighlight = (sportHighlight - 1 + options.length) % options.length;
-    syncSportSuggestions();
-  } else if (event.key === "Enter") {
-    event.preventDefault();
-    chooseSport(options[sportHighlight].name);
-  } else if (event.key === "Escape") {
-    closeSportSuggestions();
-  }
-});
-
-sportList.addEventListener("mousedown", (event) => {
-  const option = event.target.closest("[data-sport]");
-  if (!option) return;
-  event.preventDefault();
-  chooseSport(option.dataset.sport);
+  if (!event.target.closest("#habit-sport, #sport-suggestions")) sportField.close();
+  if (!event.target.closest("#habit-strength, #strength-suggestions")) strengthField.close();
 });
 
 timeClear.addEventListener("click", () => {
@@ -202,9 +198,11 @@ form.addEventListener("submit", (event) => {
   render();
   nameInput.value = "";
   sportInput.value = "";
+  strengthInput.value = "";
   repsInput.value = "";
   distanceInput.value = "";
-  closeSportSuggestions();
+  sportField.close();
+  strengthField.close();
   syncMeasureFields();
   nameInput.focus();
 });
@@ -283,6 +281,7 @@ function toEvent(id, name, date, done, start = "", end = "", details = emptyDeta
     start: time ? time.start : "",
     end: time ? time.end : "",
     sport: clean.sport,
+    sport2: clean.sport2,
     reps: clean.reps,
     distance: clean.distance,
   };
@@ -316,12 +315,13 @@ function isUuid(value) {
 }
 
 function emptyDetails() {
-  return { sport: "", reps: null, distance: null };
+  return { sport: "", sport2: "", reps: null, distance: null };
 }
 
 function normalizeDetails(details) {
   const source = details || {};
   const sport = String(source.sport || "").trim().slice(0, 80);
+  const sport2 = String(source.sport2 || "").trim().slice(0, 80);
   let reps = null;
   if (source.reps != null && source.reps !== "") {
     const amount = Number(source.reps);
@@ -332,7 +332,7 @@ function normalizeDetails(details) {
     const amount = Math.round(Number(source.distance) * 10) / 10;
     if (amount >= 0.1 && amount <= 999) distance = amount;
   }
-  return { sport, reps, distance };
+  return { sport, sport2, reps, distance };
 }
 
 function detailsFromSuffix(suffix, name) {
@@ -372,6 +372,7 @@ function clockValue(value) {
 function detailsFromColumns(row) {
   return normalizeDetails({
     sport: row.sport,
+    sport2: row.sport_2,
     reps: row.pocet_opakovani,
     distance: row.vzdalenost,
   });
@@ -384,6 +385,7 @@ function plainName(event) {
 function mergedDetails(columnDetails, legacyDetails) {
   return normalizeDetails({
     sport: columnDetails.sport || legacyDetails.sport,
+    sport2: columnDetails.sport2 || legacyDetails.sport2,
     reps: columnDetails.reps == null ? legacyDetails.reps : columnDetails.reps,
     distance: columnDetails.distance == null ? legacyDetails.distance : columnDetails.distance,
   });
@@ -409,6 +411,9 @@ function cloudErrorText(error) {
   if (code === "42501" && /column/i.test(message)) return "K novým sloupcům chybí oprávnění pro zápis.";
   if (code === "42501") return "Databáze zápis této aktivity odmítla.";
   if (code === "22P02" || code === "22007") return "Některá hodnota neodpovídá typu sloupce.";
+  if (code === "PGRST204" && /sport_2/i.test(message)) {
+    return "V tabulce habits chybí sloupec sport_2. Přidej ho v SQL editoru Supabase.";
+  }
   if (code === "PGRST204") return "Supabase ještě nevidí nové sloupce. V nastavení API obnov schéma.";
   return "Uložení do cloudu se nepovedlo.";
 }
@@ -417,7 +422,7 @@ async function loadRemoteEvents() {
   const times = readTimeCache();
   const { data, error } = await supabaseClient
     .from("habits")
-    .select("id,name,date,completed,cas_od,cas_do,sport,pocet_opakovani,vzdalenost")
+    .select("id,name,date,completed,cas_od,cas_do,sport,sport_2,pocet_opakovani,vzdalenost")
     .eq("user_id", session.user.id);
   if (error) {
     syncMessage = "Návyky se z cloudu nepodařilo načíst.";
@@ -437,6 +442,7 @@ async function loadRemoteEvents() {
       const end = columnTime ? columnTime.end : parsed.end || cached.end || "";
       if (!columnTime && validRange(start, end)) timesNeedUpload = true;
       if (!columnDetails.sport && details.sport) timesNeedUpload = true;
+      if (!columnDetails.sport2 && details.sport2) timesNeedUpload = true;
       if (columnDetails.reps == null && details.reps != null) timesNeedUpload = true;
       if (columnDetails.distance == null && details.distance != null) timesNeedUpload = true;
       const packed = parsed.start || parsed.details.sport || parsed.details.reps != null || parsed.details.distance != null;
@@ -459,6 +465,7 @@ function toHabitRow(event, userId) {
     cas_od: time ? time.start : null,
     cas_do: time ? time.end : null,
     sport: details.sport || null,
+    sport_2: details.sport2 || null,
     pocet_opakovani: details.reps,
     vzdalenost: details.distance,
   };
@@ -477,7 +484,7 @@ async function persistRemoteEvents() {
     const { data, error } = await supabaseClient
       .from("habits")
       .upsert(rows, { onConflict: "id" })
-      .select("id,cas_od,cas_do,sport,pocet_opakovani,vzdalenost");
+      .select("id,cas_od,cas_do,sport,sport_2,pocet_opakovani,vzdalenost");
     if (version !== saveVersion) return;
     if (error) {
       syncMessage = cloudErrorText(error);
@@ -488,7 +495,7 @@ async function persistRemoteEvents() {
     const missing = rows.some((row) => {
       const stored = storedById.get(row.id);
       if (!stored) return false;
-      return !sameText(row.sport, stored.sport) || !sameNumber(row.pocet_opakovani, stored.pocet_opakovani) || !sameNumber(row.vzdalenost, stored.vzdalenost) || !sameTime(row.cas_od, stored.cas_od) || !sameTime(row.cas_do, stored.cas_do);
+      return !sameText(row.sport, stored.sport) || !sameText(row.sport_2, stored.sport_2) || !sameNumber(row.pocet_opakovani, stored.pocet_opakovani) || !sameNumber(row.vzdalenost, stored.vzdalenost) || !sameTime(row.cas_od, stored.cas_od) || !sameTime(row.cas_do, stored.cas_do);
     });
     if (missing) {
       syncMessage = "Aktivita se uložila, ale nové sloupce zůstaly prázdné.";
@@ -706,6 +713,7 @@ function formatDetail(item) {
   const parts = [];
   if (item.start && item.end) parts.push(`${formatTime(item.start)}–${formatTime(item.end)}`);
   if (item.sport && item.sport !== item.name) parts.push(item.sport);
+  if (item.sport2 && item.sport2 !== item.name) parts.push(item.sport2);
   if (item.reps) parts.push(`${item.reps} opakování`);
   if (item.distance) parts.push(`${formatKm(item.distance)} km`);
   return parts.join(" · ");
@@ -725,67 +733,113 @@ function findSport(value) {
   return SPORT_CATALOG.find((sport) => foldSport(sport.name) === key) || null;
 }
 
-function sportSuggestions(query) {
+function findCatalogName(catalog, value) {
+  const key = foldSport(value);
+  if (!key) return "";
+  return catalog.find((name) => foldSport(name) === key) || "";
+}
+
+function filterCatalog(catalog, query) {
   const key = foldSport(query);
   if (!key) return [];
-  return SPORT_CATALOG.filter((sport) => foldSport(sport.name).includes(key))
+  return catalog
+    .filter((name) => foldSport(name).includes(key))
     .sort((a, b) => {
-      const aStart = foldSport(a.name).startsWith(key) ? 0 : 1;
-      const bStart = foldSport(b.name).startsWith(key) ? 0 : 1;
-      return aStart - bStart || a.name.localeCompare(b.name, "cs");
+      const aStart = foldSport(a).startsWith(key) ? 0 : 1;
+      const bStart = foldSport(b).startsWith(key) ? 0 : 1;
+      return aStart - bStart || a.localeCompare(b, "cs");
     })
     .slice(0, 8);
 }
 
-function closeSportSuggestions() {
-  sportList.hidden = true;
-  sportList.replaceChildren();
-  sportInput.setAttribute("aria-expanded", "false");
-  sportInput.removeAttribute("aria-activedescendant");
-}
+function createSuggestField({ input, list, catalog, optionPrefix, onInput, onChoose }) {
+  let highlight = 0;
 
-function chooseSport(name) {
-  sportInput.value = name;
-  sportHighlight = 0;
-  clearMetricError();
-  closeSportSuggestions();
-  syncMeasureFields();
-  const measure = findSport(name)?.measure;
-  if (measure === "reps") repsInput.focus();
-  if (measure === "distance") distanceInput.focus();
-}
-
-function syncSportSuggestions() {
-  const options = sportSuggestions(sportInput.value);
-  sportList.replaceChildren();
-  if (!options.length) {
-    closeSportSuggestions();
-    return;
+  function close() {
+    list.hidden = true;
+    list.replaceChildren();
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
   }
-  sportHighlight = Math.min(sportHighlight, options.length - 1);
-  options.forEach((sport, index) => {
-    const option = document.createElement("li");
-    option.id = `sport-option-${index}`;
-    option.dataset.sport = sport.name;
-    option.setAttribute("role", "option");
-    option.setAttribute("aria-selected", String(index === sportHighlight));
-    option.className =
-      index === sportHighlight
-        ? "cursor-pointer px-4 py-2 text-sm font-medium text-white bg-teal-700"
-        : "cursor-pointer px-4 py-2 text-sm text-slate-800 dark:text-slate-100";
-    option.textContent = sport.name;
-    sportList.append(option);
+
+  function render() {
+    const options = filterCatalog(catalog(), input.value);
+    list.replaceChildren();
+    if (!options.length) {
+      close();
+      return;
+    }
+    highlight = Math.min(highlight, options.length - 1);
+    options.forEach((name, index) => {
+      const option = document.createElement("li");
+      option.id = `${optionPrefix}-${index}`;
+      option.dataset.value = name;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(index === highlight));
+      option.className =
+        index === highlight
+          ? "cursor-pointer bg-teal-700 px-4 py-2 text-sm font-medium text-white"
+          : "cursor-pointer px-4 py-2 text-sm text-slate-800 dark:text-slate-100";
+      option.textContent = name;
+      list.append(option);
+    });
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    input.setAttribute("aria-activedescendant", `${optionPrefix}-${highlight}`);
+  }
+
+  function choose(name) {
+    input.value = name;
+    highlight = 0;
+    close();
+    if (onChoose) onChoose(name);
+  }
+
+  input.addEventListener("input", () => {
+    highlight = 0;
+    if (onInput) onInput();
+    render();
   });
-  sportList.hidden = false;
-  sportInput.setAttribute("aria-expanded", "true");
-  sportInput.setAttribute("aria-activedescendant", `sport-option-${sportHighlight}`);
+  input.addEventListener("focus", () => render());
+  input.addEventListener("keydown", (event) => {
+    const options = filterCatalog(catalog(), input.value);
+    if (list.hidden || !options.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      highlight = (highlight + 1) % options.length;
+      render();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      highlight = (highlight - 1 + options.length) % options.length;
+      render();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(options[highlight]);
+    } else if (event.key === "Escape") {
+      close();
+    }
+  });
+  list.addEventListener("mousedown", (event) => {
+    const option = event.target.closest("[data-value]");
+    if (!option) return;
+    event.preventDefault();
+    choose(option.dataset.value);
+  });
+
+  return { close };
 }
 
 function syncMeasureFields() {
   const measure = findSport(sportInput.value)?.measure || "";
-  repsWrap.classList.toggle("hidden", measure !== "reps");
+  const strength = measure === "reps";
+  strengthWrap.classList.toggle("hidden", !strength);
+  repsWrap.classList.toggle("hidden", !strength);
   distanceWrap.classList.toggle("hidden", measure !== "distance");
-  if (measure !== "reps") repsInput.value = "";
+  if (!strength) {
+    strengthInput.value = "";
+    strengthField.close();
+    repsInput.value = "";
+  }
   if (measure !== "distance") distanceInput.value = "";
 }
 
@@ -794,7 +848,14 @@ function readDraftDetails() {
   const measure = match?.measure || "";
   const repsRaw = measure === "reps" ? repsInput.value.trim() : "";
   const distanceRaw = measure === "distance" ? distanceInput.value.trim().replace(",", ".") : "";
+  let sport2 = "";
   if (measure === "reps") {
+    const kind = findCatalogName(STRENGTH_CATALOG, strengthInput.value);
+    sport2 = kind || strengthInput.value.trim();
+    if (!sport2) {
+      showMetricError("Vyber druh posilování, třeba kliky.");
+      return null;
+    }
     const value = Number(repsRaw);
     if (!/^\d+$/.test(repsRaw) || !Number.isInteger(value) || value < 1 || value > 9999) {
       showMetricError("U posilování zadej počet opakování, třeba 20.");
@@ -810,6 +871,7 @@ function readDraftDetails() {
   }
   return normalizeDetails({
     sport: match ? match.name : sportInput.value,
+    sport2,
     reps: repsRaw ? Number(repsRaw) : null,
     distance: distanceRaw ? Number(distanceRaw) : null,
   });
