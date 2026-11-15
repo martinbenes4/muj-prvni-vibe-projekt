@@ -161,7 +161,7 @@
               type="text"
               maxlength="80"
               required
-              placeholder="Nová událost, například schůzka"
+              placeholder="Například kliky, běh nebo fotbal"
               class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
             />
             <button
@@ -171,6 +171,25 @@
               Přidat
             </button>
           </div>
+          <div id="metric-kind" class="flex flex-wrap gap-2" role="radiogroup" aria-label="Druh aktivity">
+            <button type="button" data-kind="reps" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" aria-pressed="false">Opakování</button>
+            <button type="button" data-kind="distance" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" aria-pressed="false">Vzdálenost</button>
+            <button type="button" data-kind="sport" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" aria-pressed="false">Sport</button>
+          </div>
+          <div id="metric-amount-wrap" class="hidden">
+            <label id="metric-amount-label" class="mb-1 block text-sm text-slate-500 dark:text-slate-400" for="metric-amount">Počet opakování</label>
+            <input
+              id="metric-amount"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="9999"
+              step="1"
+              placeholder="Například 20"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none ring-teal-600 placeholder:text-slate-400 focus:bg-white focus:ring-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+          </div>
+          <p id="metric-error" class="hidden text-sm text-rose-700 dark:text-rose-300"></p>
           <div class="grid grid-cols-2 gap-2">
             <button
               id="time-start"
@@ -236,6 +255,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=9"></script>
   </body>
 </html>

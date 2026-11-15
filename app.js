@@ -33,6 +33,11 @@ const timePickerPreview = document.querySelector("#time-picker-preview");
 const hourGrid = document.querySelector("#hour-grid");
 const minuteGrid = document.querySelector("#minute-grid");
 const timeError = document.querySelector("#time-error");
+const metricKind = document.querySelector("#metric-kind");
+const metricAmountWrap = document.querySelector("#metric-amount-wrap");
+const metricAmountLabel = document.querySelector("#metric-amount-label");
+const metricAmountInput = document.querySelector("#metric-amount");
+const metricError = document.querySelector("#metric-error");
 const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
 const authEmail = document.querySelector("#auth-email");
@@ -55,9 +60,11 @@ let timesNeedUpload = false;
 let selectedDate = todayKey();
 let draftStart = initialRange().start;
 let draftEnd = initialRange().end;
+let draftKind = "";
 let pickerField = null;
 
 buildTimePicker();
+syncMetricControls();
 
 todayLabel.textContent = formatDate(selectedDate);
 applyTheme(document.documentElement.classList.contains("dark"));
@@ -128,6 +135,14 @@ document.addEventListener("click", (event) => {
   closePicker();
 });
 
+metricKind.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-kind]");
+  if (!button) return;
+  draftKind = draftKind === button.dataset.kind ? "" : button.dataset.kind;
+  clearMetricError();
+  syncMetricControls();
+});
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   const name = nameInput.value.trim();
@@ -136,20 +151,21 @@ form.addEventListener("submit", (event) => {
     showTimeError("Čas do musí být později než čas od.");
     return;
   }
+  const metric = readDraftMetric();
+  if (!metric) return;
 
-  events.unshift({
-    id: crypto.randomUUID(),
-    name,
-    date: selectedDate,
-    done: false,
-    start: draftStart,
-    end: draftEnd,
-  });
+  events.unshift(
+    toEvent(crypto.randomUUID(), name, selectedDate, false, draftStart, draftEnd, metric),
+  );
 
   saveEvents();
   clearTimeError();
+  clearMetricError();
   render();
   nameInput.value = "";
+  metricAmountInput.value = "";
+  draftKind = "";
+  syncMetricControls();
   nameInput.focus();
 });
 
@@ -216,7 +232,7 @@ function normalizeStoredItem(item) {
   return doneOn.map((date, index) => toEvent(index === 0 ? item.id : `${item.id}-${date}`, item.name, date, true));
 }
 
-function toEvent(id, name, date, done, start = "", end = "") {
+function toEvent(id, name, date, done, start = "", end = "", metric = emptyMetric()) {
   const time = validRange(start, end);
   return {
     id,
@@ -225,6 +241,7 @@ function toEvent(id, name, date, done, start = "", end = "") {
     done: canComplete(date) && done,
     start: time ? time.start : "",
     end: time ? time.end : "",
+    metric: normalizeMetric(metric),
   };
 }
 
@@ -255,33 +272,93 @@ function isUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function emptyMetric() {
+  return { kind: "", amount: null };
+}
+
+function normalizeMetric(metric) {
+  if (!metric || metric.kind === "sport") return metric?.kind === "sport" ? { kind: "sport", amount: null } : emptyMetric();
+  if (metric.kind === "reps") {
+    const amount = Number(metric.amount);
+    if (Number.isInteger(amount) && amount >= 1 && amount <= 9999) return { kind: "reps", amount };
+  }
+  if (metric.kind === "distance") {
+    const amount = Math.round(Number(metric.amount) * 10) / 10;
+    if (amount >= 0.1 && amount <= 999) return { kind: "distance", amount };
+  }
+  return emptyMetric();
+}
+
+function metricFromSuffix(suffix) {
+  if (suffix === "s") return { kind: "sport", amount: null };
+  const reps = String(suffix || "").match(/^r:(\d+)$/);
+  if (reps) return normalizeMetric({ kind: "reps", amount: Number(reps[1]) });
+  const distance = String(suffix || "").match(/^d:(\d+(?:\.\d+)?)$/);
+  if (distance) return normalizeMetric({ kind: "distance", amount: Number(distance[1]) });
+  return emptyMetric();
+}
+
+function metricSuffix(metric) {
+  const clean = normalizeMetric(metric);
+  if (clean.kind === "reps") return `r:${clean.amount}`;
+  if (clean.kind === "distance") return `d:${clean.amount}`;
+  if (clean.kind === "sport") return "s";
+  return "";
+}
+
 function splitStoredName(stored) {
   const text = String(stored);
   const parts = text.split("\u001f");
   if (parts.length === 3 && validRange(parts[1], parts[2])) {
-    return { name: parts[0], start: parts[1], end: parts[2] };
+    return { name: parts[0], start: parts[1], end: parts[2], metric: emptyMetric() };
   }
-  const match = text.match(/^(.*)\|([0-9]{1,2}):([0-5][0-9])-([0-9]{1,2}):([0-5][0-9])\|$/);
+  const match = text.match(/^(.*)\|([0-9]{1,2}):([0-5][0-9])-([0-9]{1,2}):([0-5][0-9])\|(r:\d+|d:\d+(?:\.\d+)?|s)?$/);
   if (match) {
     const start = toTimeValue(Number(match[2]), Number(match[3]));
     const end = toTimeValue(Number(match[4]), Number(match[5]));
-    if (validRange(start, end)) return { name: match[1], start, end };
+    if (validRange(start, end)) {
+      return { name: match[1], start, end, metric: metricFromSuffix(match[6]) };
+    }
   }
-  return { name: text, start: "", end: "" };
+  return { name: text, start: "", end: "", metric: emptyMetric() };
 }
 
 function storedName(event) {
   const time = validRange(event.start, event.end);
   const name = splitStoredName(event.name).name;
   if (!time) return name;
-  return `${name}|${time.start}-${time.end}|`;
+  const suffix = metricSuffix(event.metric);
+  return suffix ? `${name}|${time.start}-${time.end}|${suffix}` : `${name}|${time.start}-${time.end}|`;
+}
+
+function clockValue(value) {
+  const match = String(value || "").match(/(\d{1,2}):([0-5]\d)/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  if (hour > 23) return "";
+  return toTimeValue(hour, Number(match[2]));
+}
+
+function metricFromColumns(row) {
+  if (row.pocet_opakovani != null && row.pocet_opakovani !== "") {
+    return normalizeMetric({ kind: "reps", amount: Number(row.pocet_opakovani) });
+  }
+  if (row.vzdalenost != null && row.vzdalenost !== "") {
+    return normalizeMetric({ kind: "distance", amount: Number(row.vzdalenost) });
+  }
+  if (typeof row.sport === "string" && row.sport.trim()) return { kind: "sport", amount: null };
+  return emptyMetric();
+}
+
+function plainName(event) {
+  return splitStoredName(event.name).name.trim();
 }
 
 async function loadRemoteEvents() {
   const times = readTimeCache();
   const { data, error } = await supabaseClient
     .from("habits")
-    .select("id,name,date,completed")
+    .select("id,name,date,completed,cas_od,cas_do,sport,pocet_opakovani,vzdalenost")
     .eq("user_id", session.user.id);
   if (error) {
     syncMessage = "Návyky se z cloudu nepodařilo načíst.";
@@ -294,11 +371,16 @@ async function loadRemoteEvents() {
       const date = String(row.date || "").slice(0, 10);
       const parsed = splitStoredName(row.name);
       const cached = times[row.id] || {};
-      const start = parsed.start || cached.start || "";
-      const end = parsed.end || cached.end || "";
-      if (!parsed.start && validRange(start, end)) timesNeedUpload = true;
-      if (!isValidDateKey(date) || typeof row.name !== "string" || !parsed.name.trim()) return null;
-      return toEvent(String(row.id), parsed.name, date, row.completed === true, start, end);
+      const columnTime = validRange(clockValue(row.cas_od), clockValue(row.cas_do));
+      const columnMetric = metricFromColumns(row);
+      const start = columnTime ? columnTime.start : parsed.start || cached.start || "";
+      const end = columnTime ? columnTime.end : parsed.end || cached.end || "";
+      const metric = columnMetric.kind ? columnMetric : parsed.metric;
+      if (!columnTime && validRange(start, end)) timesNeedUpload = true;
+      if (!columnMetric.kind && metric.kind) timesNeedUpload = true;
+      const name = parsed.start || parsed.metric.kind ? parsed.name : String(row.name || "");
+      if (!isValidDateKey(date) || !name.trim()) return null;
+      return toEvent(String(row.id), name.trim(), date, row.completed === true, start, end, metric);
     })
     .filter(Boolean);
 }
@@ -309,12 +391,20 @@ async function persistRemoteEvents() {
   const rows = events.map((event) => {
     const id = isUuid(event.id) ? event.id : crypto.randomUUID();
     if (event.id !== id) event.id = id;
+    const time = validRange(event.start, event.end);
+    const metric = normalizeMetric(event.metric);
+    const name = plainName(event);
     return {
       id,
       user_id: userId,
-      name: storedName(event),
+      name,
       date: event.date,
       completed: Boolean(event.done),
+      cas_od: time ? time.start : null,
+      cas_do: time ? time.end : null,
+      sport: metric.kind === "sport" ? name : null,
+      pocet_opakovani: metric.kind === "reps" ? metric.amount : null,
+      vzdalenost: metric.kind === "distance" ? metric.amount : null,
     };
   });
   rememberTimes(events);
@@ -530,6 +620,90 @@ function toTimeValue(hour, minute) {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
+function formatKm(amount) {
+  return String(Math.round(amount * 10) / 10).replace(".", ",");
+}
+
+function formatMetric(metric) {
+  const clean = normalizeMetric(metric);
+  if (clean.kind === "reps") return `${clean.amount} opakování`;
+  if (clean.kind === "distance") return `${formatKm(clean.amount)} km`;
+  if (clean.kind === "sport") return "Sport";
+  return "";
+}
+
+function formatDetail(item) {
+  const parts = [];
+  if (item.start && item.end) parts.push(`${formatTime(item.start)}–${formatTime(item.end)}`);
+  const metric = formatMetric(item.metric);
+  if (metric) parts.push(metric);
+  return parts.join(" · ");
+}
+
+function readDraftMetric() {
+  if (!draftKind) return emptyMetric();
+  if (draftKind === "sport") return { kind: "sport", amount: null };
+  const raw = metricAmountInput.value.trim().replace(",", ".");
+  const value = Number(raw);
+  if (draftKind === "reps") {
+    if (!Number.isInteger(value) || value < 1 || value > 9999) {
+      showMetricError("Zadej počet opakování, třeba 20.");
+      return null;
+    }
+    return { kind: "reps", amount: value };
+  }
+  if (!Number.isFinite(value) || value < 0.1 || value > 999) {
+    showMetricError("Zadej vzdálenost v kilometrech, třeba 5,2.");
+    return null;
+  }
+  return { kind: "distance", amount: Math.round(value * 10) / 10 };
+}
+
+function showMetricError(message) {
+  metricError.textContent = message;
+  metricError.classList.remove("hidden");
+}
+
+function clearMetricError() {
+  metricError.textContent = "";
+  metricError.classList.add("hidden");
+}
+
+function syncMetricControls() {
+  metricKind.querySelectorAll("[data-kind]").forEach((button) => {
+    const selected = button.dataset.kind === draftKind;
+    button.setAttribute("aria-pressed", String(selected));
+    button.className = selected
+      ? "rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
+      : "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
+  });
+  const needsAmount = draftKind === "reps" || draftKind === "distance";
+  metricAmountWrap.classList.toggle("hidden", !needsAmount);
+  if (draftKind === "reps") {
+    metricAmountLabel.textContent = "Počet opakování";
+    metricAmountInput.type = "number";
+    metricAmountInput.min = "1";
+    metricAmountInput.max = "9999";
+    metricAmountInput.step = "1";
+    metricAmountInput.inputMode = "numeric";
+    metricAmountInput.placeholder = "Například 20 kliků nebo sklapovaček";
+    nameInput.placeholder = "Například kliky, sklapovačky, činka";
+  } else if (draftKind === "distance") {
+    metricAmountLabel.textContent = "Vzdálenost v kilometrech";
+    metricAmountInput.type = "text";
+    metricAmountInput.min = "0.1";
+    metricAmountInput.max = "999";
+    metricAmountInput.step = "0.1";
+    metricAmountInput.inputMode = "decimal";
+    metricAmountInput.placeholder = "Například 5,2";
+    nameInput.placeholder = "Například běh nebo kolo";
+  } else if (draftKind === "sport") {
+    nameInput.placeholder = "Například fotbal, tenis, plavání";
+  } else {
+    nameInput.placeholder = "Například kliky, běh nebo fotbal";
+  }
+}
+
 function formatTime(value) {
   const [hour, minute] = value.split(":");
   return `${Number(hour)}:${minute}`;
@@ -703,7 +877,7 @@ function renderTimeline(items) {
       name.textContent = item.name;
       const time = document.createElement("p");
       time.className = done ? "text-xs tabular-nums" : "text-xs tabular-nums text-teal-50";
-      time.textContent = `${formatTime(item.start)}–${formatTime(item.end)}`;
+      time.textContent = formatDetail(item);
       block.append(name, time);
       timelineTrack.append(block);
     });
@@ -725,7 +899,7 @@ function renderTimeline(items) {
     row.className = item.done
       ? "rounded-xl bg-teal-700/15 px-3 py-2 text-sm text-slate-500 line-through ring-1 ring-teal-700/30 dark:text-slate-400"
       : "rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100";
-    row.textContent = item.name;
+    row.textContent = formatDetail(item) ? `${item.name} · ${formatDetail(item)}` : item.name;
     timelineUntimed.append(row);
   });
 }
@@ -801,7 +975,12 @@ function render() {
     if (item.start && item.end) {
       const time = document.createElement("p");
       time.className = "text-sm tabular-nums text-slate-500 dark:text-slate-400";
-      time.textContent = `${formatTime(item.start)}–${formatTime(item.end)}`;
+      time.textContent = formatDetail(item);
+      textWrap.append(time);
+    } else if (formatMetric(item.metric)) {
+      const time = document.createElement("p");
+      time.className = "text-sm text-slate-500 dark:text-slate-400";
+      time.textContent = formatMetric(item.metric);
       textWrap.append(time);
     }
 
