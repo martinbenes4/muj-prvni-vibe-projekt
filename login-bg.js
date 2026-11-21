@@ -191,13 +191,19 @@
     link.restoreAt = time + 2000 + Math.random() * 2500;
   }
 
+  function blastLimit(blast) {
+    if (blast.all) return Math.hypot(window.innerWidth, window.innerHeight) + gap();
+    if (blast.rect) return blast.pad;
+    return gap() * 3;
+  }
+
   function detonate(placed, time) {
     if (!blasts.length) return;
     const step = gap();
     const ring = reduced.matches ? 0 : 180;
     for (let i = blasts.length - 1; i >= 0; i -= 1) {
       const blast = blasts[i];
-      const maxReach = blast.rect ? blast.pad : step * 3;
+      const maxReach = blastLimit(blast);
       const age = time - blast.started;
       const reach = ring === 0 ? maxReach : Math.min(maxReach, (age / ring) * step);
       placed.forEach((spot, index) => {
@@ -221,7 +227,7 @@
     const step = gap();
     const ring = reduced.matches ? 0 : 180;
     return blasts.some((blast) => {
-      const maxReach = blast.rect ? blast.pad : step * 3;
+      const maxReach = blastLimit(blast);
       const distance = blastDistance(spot, blast);
       if (distance > maxReach) return false;
       const reach = ring === 0 ? maxReach : Math.min(maxReach, ((time - blast.started) / ring) * step);
@@ -401,11 +407,15 @@
 
   document.addEventListener("click", (event) => {
     if (!running) return;
-    if (event.target.closest("#auth-google")) {
-      const form = document.querySelector("#auth-form");
-      if (!form) return;
-      const rect = form.getBoundingClientRect();
-      blasts.push({ rect, pad: gap() * 3, started: performance.now() });
+    const google = event.target.closest("#auth-google");
+    if (google) {
+      const box = google.getBoundingClientRect();
+      blasts.push({
+        x: box.left + box.width / 2,
+        y: box.top + box.height / 2,
+        all: true,
+        started: performance.now(),
+      });
       return;
     }
     if (event.target.closest("button, a, input, textarea, select, label, form")) return;
