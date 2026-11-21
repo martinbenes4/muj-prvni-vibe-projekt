@@ -281,12 +281,16 @@ function normalizeStoredItem(item) {
   return doneOn.map((date, index) => toEvent(index === 0 ? item.id : `${item.id}-${date}`, item.name, date, true));
 }
 
+function clipName(value) {
+  return String(value || "").trim().slice(0, 80);
+}
+
 function toEvent(id, name, date, done, start = "", end = "", details = emptyDetails()) {
   const time = validRange(start, end);
   const clean = normalizeDetails(details);
   return {
     id,
-    name,
+    name: clipName(name),
     date,
     done: canComplete(date) && done,
     start: time ? time.start : "",
@@ -408,7 +412,7 @@ function detailsFromColumns(row) {
 }
 
 function plainName(event) {
-  return splitStoredName(event.name).name.trim();
+  return clipName(splitStoredName(event.name).name);
 }
 
 function mergedDetails(columnDetails, legacyDetails) {

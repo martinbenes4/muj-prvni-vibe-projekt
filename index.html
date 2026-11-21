@@ -3,7 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Tracker návyků</title>
+    <style>
+      html.framed,
+      html.framed body {
+        display: none !important;
+      }
+    </style>
+    <script>
+      (function () {
+        if (window.top === window.self) return;
+        document.documentElement.classList.add("framed");
+        try {
+          window.top.location.replace(window.location.href);
+        } catch (error) {
+          /* cizí stránka navigaci ven nepovolila */
+        }
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = { darkMode: "class" };
@@ -293,6 +311,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
     <script src="sports.js?v=13"></script>
     <script src="login-bg.js?v=15"></script>
-    <script src="app.js?v=17"></script>
+    <script src="app.js?v=18"></script>
   </body>
 </html>
