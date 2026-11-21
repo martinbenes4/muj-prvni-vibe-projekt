@@ -39,13 +39,13 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="style.css?v=2" />
+    <link rel="stylesheet" href="style.css?v=3" />
   </head>
   <body class="min-h-screen text-slate-800 antialiased dark:text-slate-100">
     <canvas id="login-mesh" class="login-mesh" aria-hidden="true"></canvas>
     <main class="relative z-10 mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
-      <header class="mb-8 flex items-start justify-between gap-4">
-        <div>
+      <header class="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
           <p id="day-kind" class="text-sm font-medium uppercase tracking-wide text-teal-700 dark:text-teal-300">Dnes</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">Tracker návyků</h1>
           <p id="today-label" class="mt-2 text-slate-500 dark:text-slate-400"></p>
@@ -56,7 +56,7 @@
           <button
             id="auth-logout"
             type="button"
-            class="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+            class="hidden min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-teal-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
           >
             Odhlásit
           </button>
@@ -303,7 +303,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
     <script src="sports.js?v=13"></script>
-    <script src="login-bg.js?v=17"></script>
-    <script src="app.js?v=20"></script>
+    <script src="login-bg.js?v=18"></script>
+    <script src="app.js?v=22"></script>
   </body>
 </html>

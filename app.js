@@ -3,7 +3,13 @@ const THEME_KEY = "habit-tracker-theme";
 const TIME_KEY = "habit-tracker-times";
 const SUPABASE_URL = "https://ugkeyyvxxhisovreogad.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVna2V5eXZ4eGhpc292cmVvZ2FkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQwNDYwMTcsImV4cCI6MjEwOTYyMjAxN30.IYKuHD5XTNZE84m3UMTWugmcOJPpkhB_jqakaa5To3k";
-const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+const supabaseClient = window.supabase
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        lock: async (_name, _acquireTimeout, fn) => fn(),
+      },
+    })
+  : null;
 
 const form = document.querySelector("#habit-form");
 const nameInput = document.querySelector("#habit-name");
@@ -202,6 +208,7 @@ form.addEventListener("submit", (event) => {
   if (!details) return;
 
   events.unshift(toEvent(crypto.randomUUID(), name, selectedDate, false, draftStart, draftEnd, details));
+  burstMesh(form.querySelector("button[type=submit]"));
 
   saveEvents();
   clearTimeError();
@@ -227,6 +234,7 @@ list.addEventListener("click", (event) => {
   if (button.dataset.action === "toggle") {
     if (!canComplete(item.date)) return;
     item.done = !item.done;
+    if (item.done) burstMesh(button);
   }
 
   if (button.dataset.action === "delete") {
@@ -238,7 +246,7 @@ list.addEventListener("click", (event) => {
 });
 
 authLogout.addEventListener("click", () => {
-  if (supabaseClient) supabaseClient.auth.signOut();
+  signOutNow();
 });
 authForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -296,6 +304,13 @@ function toEvent(id, name, date, done, start = "", end = "", details = emptyDeta
     distance: clean.distance,
     exercises: clean.exercises,
   };
+}
+
+function burstMesh(element) {
+  const box = element?.getBoundingClientRect();
+  const x = box ? box.left + box.width / 2 : window.innerWidth / 2;
+  const y = box ? box.top + box.height / 2 : window.innerHeight / 2;
+  document.dispatchEvent(new CustomEvent("mesh-blast", { detail: { x, y } }));
 }
 
 function saveEvents() {
@@ -649,6 +664,44 @@ async function signUp() {
     return;
   }
   closeAuthModal();
+}
+
+function clearAuthStorage() {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key && key.startsWith("sb-") && key.includes("auth-token")) localStorage.removeItem(key);
+    }
+  } catch {
+    /* úložiště není dostupné */
+  }
+}
+
+async function signOutNow() {
+  if (!supabaseClient || authLogout.disabled) return;
+  authLogout.disabled = true;
+  let signedOut = false;
+  try {
+    const result = await Promise.race([
+      supabaseClient.auth.signOut().then((response) => ({ timedOut: false, error: response?.error })),
+      new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), 2000)),
+    ]);
+    signedOut = !result.timedOut && !result.error;
+    if (!signedOut) {
+      await Promise.race([
+        supabaseClient.auth.signOut({ scope: "local" }).catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 500)),
+      ]);
+    }
+  } catch {
+    signedOut = false;
+  }
+  if (!signedOut || session) {
+    clearAuthStorage();
+    appliedUserId = undefined;
+    await useSession(null);
+  }
+  authLogout.disabled = false;
 }
 
 function updateAuthUi() {

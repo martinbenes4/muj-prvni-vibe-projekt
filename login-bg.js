@@ -392,18 +392,23 @@
   }
 
   function sync() {
-    const open = document.documentElement.classList.contains("login-open");
-    if (open && !running) {
-      running = true;
-      resize();
-      frame = requestAnimationFrame(loop);
-      return;
-    }
-    if (!open && running) {
-      running = false;
-      cancelAnimationFrame(frame);
-    }
+    if (running) return;
+    running = true;
+    resize();
+    frame = requestAnimationFrame(loop);
   }
+
+  document.addEventListener("mesh-blast", (event) => {
+    if (!running) return;
+    const x = Number(event.detail?.x);
+    const y = Number(event.detail?.y);
+    blasts.push({
+      x: Number.isFinite(x) ? x : window.innerWidth / 2,
+      y: Number.isFinite(y) ? y : window.innerHeight / 2,
+      all: true,
+      started: performance.now(),
+    });
+  });
 
   document.addEventListener("click", (event) => {
     if (!running) return;
@@ -433,7 +438,6 @@
   window.addEventListener("pointerleave", () => {
     pointer.inside = false;
   });
-  new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   window.addEventListener("resize", () => {
     if (running) resize();
   });
