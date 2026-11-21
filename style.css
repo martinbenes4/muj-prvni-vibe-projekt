@@ -15,13 +15,21 @@ html.dark body {
     #020617;
 }
 
+html.login-open,
+html.login-open body {
+  height: 100%;
+  overflow: hidden;
+}
+
 .login-mesh {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
   z-index: 0;
   display: none;
   width: 100%;
   height: 100%;
+  max-width: 100%;
   pointer-events: none;
 }
 
