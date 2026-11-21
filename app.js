@@ -54,11 +54,9 @@ const HABIT_COLUMNS = [
   "cas_od",
   "cas_do",
   "sport",
-  "pocet_opakovani",
   "vzdalenost",
   ...EXERCISE_SLOTS.flatMap((slot) => [`sport_typ_${slot}`, `pocet_opakovani_${slot}`]),
 ].join(",");
-const authOpen = document.querySelector("#auth-open");
 const authLogout = document.querySelector("#auth-logout");
 const authEmail = document.querySelector("#auth-email");
 const authModal = document.querySelector("#auth-modal");
@@ -239,9 +237,6 @@ list.addEventListener("click", (event) => {
   render();
 });
 
-authOpen.addEventListener("click", () => {
-  signInWithGoogle();
-});
 authLogout.addEventListener("click", () => {
   if (supabaseClient) supabaseClient.auth.signOut();
 });
@@ -496,7 +491,6 @@ function toHabitRow(event, userId) {
     cas_od: time ? time.start : null,
     cas_do: time ? time.end : null,
     sport: details.sport || null,
-    pocet_opakovani: null,
     vzdalenost: details.distance,
   };
   EXERCISE_SLOTS.forEach((slot, index) => {
@@ -659,7 +653,6 @@ async function signUp() {
 
 function updateAuthUi() {
   const signedIn = Boolean(session);
-  authOpen.classList.toggle("hidden", signedIn);
   authLogout.classList.toggle("hidden", !signedIn);
   authEmail.classList.toggle("hidden", !signedIn);
   authEmail.textContent = signedIn ? session.user.email || "" : "";
