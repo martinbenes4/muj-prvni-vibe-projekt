@@ -28,8 +28,10 @@
         points.push({
           x: col * step + (Math.random() - 0.5) * jitter,
           y: row * step + (Math.random() - 0.5) * jitter,
+          z: Math.random() * 2 - 1,
           phase: Math.random() * Math.PI * 2,
-          amp: step * (0.05 + Math.random() * 0.07),
+          phase2: Math.random() * Math.PI * 2,
+          amp: step * (0.22 + Math.random() * 0.28),
           mode: "on",
           visited: false,
           returnAt: 0,
@@ -58,17 +60,48 @@
 
   function palette() {
     if (document.documentElement.classList.contains("dark")) {
-      return { bg: "#07111a", line: "rgba(45, 212, 191, 0.34)", node: "rgba(204, 251, 241, 0.9)" };
+      return { bg: "#07111a", rgb: [45, 212, 191], alpha: 0.55, node: "rgba(204, 251, 241, 0.9)" };
     }
-    return { bg: "#ffffff", line: "rgba(100, 116, 139, 0.72)", node: "rgba(71, 85, 105, 0.9)" };
+    return { bg: "#ffffff", rgb: [100, 116, 139], alpha: 0.85, node: "rgba(71, 85, 105, 0.9)" };
+  }
+
+  function project(x, y, z) {
+    const depth = 0.68 + (z + 1) * 0.32;
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+    return {
+      x: cx + (x - cx) * depth,
+      y: cy + (y - cy) * depth,
+      z,
+      scale: 0.84 + (z + 1) * 0.16,
+    };
   }
 
   function place(point, time) {
-    if (reduced.matches) return point;
-    return {
-      x: point.x + Math.sin(time * 0.0004 + point.phase) * point.amp,
-      y: point.y + Math.cos(time * 0.00035 + point.phase) * point.amp,
-    };
+    let x = point.x;
+    let y = point.y;
+    let z = point.z;
+    if (!reduced.matches) {
+      const t = time * 0.001;
+      x += Math.sin(t * 0.62 + point.phase) * point.amp + Math.sin(t * 0.21 + point.phase2) * point.amp * 0.7;
+      y += Math.cos(t * 0.47 + point.phase2) * point.amp + Math.sin(t * 0.16 + point.phase) * point.amp * 0.65;
+      z += Math.sin(t * 0.37 + point.phase) * 0.7 + Math.cos(t * 0.19 + point.phase2) * 0.35;
+      z = Math.max(-1, Math.min(1, z));
+    }
+    return project(x, y, z);
+  }
+
+  function lineLook(from, to) {
+    const dist = Math.hypot(to.x - from.x, to.y - from.y, (to.z - from.z) * gap());
+    const fade = Math.min(1, Math.max(0, (dist - gap() * 0.65) / (gap() * 2.1)));
+    return { width: 1.65 - fade * 1.2, alpha: 1 - fade * 0.78 };
+  }
+
+  function applyLine(colors, from, to, strength) {
+    const look = lineLook(from, to);
+    const [red, green, blue] = colors.rgb;
+    ctx.lineWidth = look.width;
+    ctx.strokeStyle = `rgba(${red}, ${green}, ${blue}, ${colors.alpha * look.alpha * strength})`;
   }
 
   function pointOnSegment(px, py, ax, ay, bx, by) {
@@ -123,23 +156,58 @@
     });
   }
 
+  function segmentCrossesRect(ax, ay, bx, by, rect, pad) {
+    const left = rect.left - pad;
+    const top = rect.top - pad;
+    const right = rect.right + pad;
+    const bottom = rect.bottom + pad;
+    const inside = (x, y) => x >= left && x <= right && y >= top && y <= bottom;
+    if (inside(ax, ay) || inside(bx, by)) return true;
+    const hits = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+      const denom = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+      if (Math.abs(denom) < 0.001) return false;
+      const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / denom;
+      const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / denom;
+      return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+    };
+    return (
+      hits(ax, ay, bx, by, left, top, right, top) ||
+      hits(ax, ay, bx, by, right, top, right, bottom) ||
+      hits(ax, ay, bx, by, right, bottom, left, bottom) ||
+      hits(ax, ay, bx, by, left, bottom, left, top)
+    );
+  }
+
   function detonate(placed, time) {
     if (!blasts.length) return;
     const radius = gap() * 3;
     const radiusSq = radius * radius;
     const hit = new Set();
+    const cut = new Set();
     blasts.splice(0).forEach((blast) => {
       placed.forEach((spot, index) => {
         if (points[index].mode !== "on") return;
-        const dx = spot.x - blast.x;
-        const dy = spot.y - blast.y;
-        if (dx * dx + dy * dy > radiusSq) return;
+        if (blast.rect) {
+          const dx = Math.max(blast.rect.left - spot.x, 0, spot.x - blast.rect.right);
+          const dy = Math.max(blast.rect.top - spot.y, 0, spot.y - blast.rect.bottom);
+          if (dx * dx + dy * dy > blast.pad * blast.pad) return;
+        } else {
+          const dx = spot.x - blast.x;
+          const dy = spot.y - blast.y;
+          if (dx * dx + dy * dy > radiusSq) return;
+        }
         hit.add(index);
       });
+      if (!blast.rect) return;
+      links.forEach((link, index) => {
+        const from = placed[link.a];
+        const to = placed[link.b];
+        if (segmentCrossesRect(from.x, from.y, to.x, to.y, blast.rect, blast.pad)) cut.add(index);
+      });
     });
-    if (!hit.size) return;
-    links.forEach((link) => {
-      if (!hit.has(link.a) && !hit.has(link.b)) return;
+    if (!hit.size && !cut.size) return;
+    links.forEach((link, index) => {
+      if (!hit.has(link.a) && !hit.has(link.b) && !cut.has(index)) return;
       if (link.mode === "gone") return;
       link.mode = "gone";
       link.restoreAt = time + 2000 + Math.random() * 2500;
@@ -177,13 +245,11 @@
         const gap = 0.08 + p * 0.92;
         const left = Math.max(0, link.cutAt - gap * link.cutAt);
         const right = Math.min(1, link.cutAt + gap * (1 - link.cutAt));
-        ctx.globalAlpha = 1 - p;
-        ctx.strokeStyle = colors.line;
+        applyLine(colors, from, to, 1 - p);
         ctx.beginPath();
         if (left > 0.01) strokePiece(ctx, from, to, 0, left);
         if (right < 0.99) strokePiece(ctx, from, to, right, 1);
         ctx.stroke();
-        ctx.globalAlpha = 1;
         if (p >= 1) {
           link.mode = "gone";
           link.restoreAt = time + 2000 + Math.random() * 2500;
@@ -199,16 +265,14 @@
       }
       if (link.mode === "grow") {
         const p = Math.min(1, (time - link.started) / 680);
-        ctx.globalAlpha = 0.35 + p * 0.65;
-        ctx.strokeStyle = colors.line;
+        applyLine(colors, from, to, 0.35 + p * 0.65);
         ctx.beginPath();
         strokePiece(ctx, from, to, 0, p);
         ctx.stroke();
-        ctx.globalAlpha = 1;
         if (p >= 1) link.mode = "live";
         return;
       }
-      ctx.strokeStyle = colors.line;
+      applyLine(colors, from, to, 1);
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
@@ -246,7 +310,7 @@
         const weight = (alive[index] - 1) / Math.max(1, busiest - 1);
         point.radius = 1.7 * (1 + Math.min(1, Math.max(0, weight)));
         ctx.beginPath();
-        ctx.arc(spot.x, spot.y, point.radius, 0, Math.PI * 2);
+        ctx.arc(spot.x, spot.y, point.radius * spot.scale, 0, Math.PI * 2);
         ctx.fill();
         return;
       }
@@ -317,6 +381,13 @@
 
   document.addEventListener("click", (event) => {
     if (!running) return;
+    if (event.target.closest("#auth-google")) {
+      const form = document.querySelector("#auth-form");
+      if (!form) return;
+      const rect = form.getBoundingClientRect();
+      blasts.push({ rect, pad: gap() * 3 });
+      return;
+    }
     if (event.target.closest("button, a, input, textarea, select, label, form")) return;
     blasts.push({ x: event.clientX, y: event.clientY });
   });
