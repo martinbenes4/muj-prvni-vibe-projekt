@@ -661,6 +661,7 @@ function updateAuthUi() {
   authEmail.textContent = signedIn ? session.user.email || "" : "";
   authModal.classList.toggle("hidden", signedIn);
   appShell.classList.toggle("hidden", !signedIn);
+  document.documentElement.classList.toggle("login-open", !signedIn);
   syncStatus.textContent = syncMessage;
   syncStatus.classList.toggle("hidden", !syncMessage);
 }

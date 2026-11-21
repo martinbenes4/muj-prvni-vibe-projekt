@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="cs">
+<html lang="cs" class="login-open">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -24,7 +24,8 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body class="min-h-screen text-slate-800 antialiased dark:text-slate-100">
-    <main class="mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
+    <canvas id="login-mesh" class="login-mesh" aria-hidden="true"></canvas>
+    <main class="relative z-10 mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
       <header class="mb-8 flex items-start justify-between gap-4">
         <div>
           <p id="day-kind" class="text-sm font-medium uppercase tracking-wide text-teal-700 dark:text-teal-300">Dnes</p>
@@ -291,6 +292,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
     <script src="sports.js?v=13"></script>
-    <script src="app.js?v=16"></script>
+    <script src="login-bg.js?v=8"></script>
+    <script src="app.js?v=17"></script>
   </body>
 </html>
