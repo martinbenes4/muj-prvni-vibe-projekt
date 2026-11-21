@@ -82,7 +82,7 @@
     let y = point.y;
     let z = point.z;
     if (!reduced.matches) {
-      const t = time * 0.001;
+      const t = time * 0.0007;
       x += Math.sin(t * 0.62 + point.phase) * point.amp + Math.sin(t * 0.21 + point.phase2) * point.amp * 0.7;
       y += Math.cos(t * 0.47 + point.phase2) * point.amp + Math.sin(t * 0.16 + point.phase) * point.amp * 0.65;
       z += Math.sin(t * 0.37 + point.phase) * 0.7 + Math.cos(t * 0.19 + point.phase2) * 0.35;
