@@ -178,46 +178,54 @@
     );
   }
 
+  function blastDistance(spot, blast) {
+    if (!blast.rect) return Math.hypot(spot.x - blast.x, spot.y - blast.y);
+    const dx = Math.max(blast.rect.left - spot.x, 0, spot.x - blast.rect.right);
+    const dy = Math.max(blast.rect.top - spot.y, 0, spot.y - blast.rect.bottom);
+    return Math.hypot(dx, dy);
+  }
+
+  function silenceLink(link, time) {
+    if (link.mode === "gone") return;
+    link.mode = "gone";
+    link.restoreAt = time + 2000 + Math.random() * 2500;
+  }
+
   function detonate(placed, time) {
     if (!blasts.length) return;
-    const radius = gap() * 3;
-    const radiusSq = radius * radius;
-    const hit = new Set();
-    const cut = new Set();
-    blasts.splice(0).forEach((blast) => {
+    const step = gap();
+    const ring = reduced.matches ? 0 : 180;
+    for (let i = blasts.length - 1; i >= 0; i -= 1) {
+      const blast = blasts[i];
+      const maxReach = blast.rect ? blast.pad : step * 3;
+      const age = time - blast.started;
+      const reach = ring === 0 ? maxReach : Math.min(maxReach, (age / ring) * step);
       placed.forEach((spot, index) => {
-        if (points[index].mode !== "on") return;
-        if (blast.rect) {
-          const dx = Math.max(blast.rect.left - spot.x, 0, spot.x - blast.rect.right);
-          const dy = Math.max(blast.rect.top - spot.y, 0, spot.y - blast.rect.bottom);
-          if (dx * dx + dy * dy > blast.pad * blast.pad) return;
-        } else {
-          const dx = spot.x - blast.x;
-          const dy = spot.y - blast.y;
-          if (dx * dx + dy * dy > radiusSq) return;
-        }
-        hit.add(index);
+        const point = points[index];
+        if (point.mode !== "on") return;
+        const distance = blastDistance(spot, blast);
+        if (distance > maxReach || distance > reach) return;
+        point.mode = "boom";
+        point.started = time;
+        point.returnAt = time + 4000;
+        point.visited = true;
+        links.forEach((link) => {
+          if (link.a === index || link.b === index) silenceLink(link, time);
+        });
       });
-      if (!blast.rect) return;
-      links.forEach((link, index) => {
-        const from = placed[link.a];
-        const to = placed[link.b];
-        if (segmentCrossesRect(from.x, from.y, to.x, to.y, blast.rect, blast.pad)) cut.add(index);
-      });
-    });
-    if (!hit.size && !cut.size) return;
-    links.forEach((link, index) => {
-      if (!hit.has(link.a) && !hit.has(link.b) && !cut.has(index)) return;
-      if (link.mode === "gone") return;
-      link.mode = "gone";
-      link.restoreAt = time + 2000 + Math.random() * 2500;
-    });
-    hit.forEach((index) => {
-      const point = points[index];
-      point.mode = "boom";
-      point.started = time;
-      point.returnAt = time + 4000;
-      point.visited = true;
+      if (age >= (ring === 0 ? 0 : (maxReach / step) * ring) + 40) blasts.splice(i, 1);
+    }
+  }
+
+  function wavePending(spot, time) {
+    const step = gap();
+    const ring = reduced.matches ? 0 : 180;
+    return blasts.some((blast) => {
+      const maxReach = blast.rect ? blast.pad : step * 3;
+      const distance = blastDistance(spot, blast);
+      if (distance > maxReach) return false;
+      const reach = ring === 0 ? maxReach : Math.min(maxReach, ((time - blast.started) / ring) * step);
+      return distance > reach;
     });
   }
 
@@ -315,6 +323,12 @@
         return;
       }
       if (point.mode === "on") {
+        if (wavePending(spot, time)) {
+          ctx.beginPath();
+          ctx.arc(spot.x, spot.y, point.radius * spot.scale, 0, Math.PI * 2);
+          ctx.fill();
+          return;
+        }
         if (point.visited) {
           point.mode = "boom";
           point.started = time;
@@ -391,11 +405,11 @@
       const form = document.querySelector("#auth-form");
       if (!form) return;
       const rect = form.getBoundingClientRect();
-      blasts.push({ rect, pad: gap() * 3 });
+      blasts.push({ rect, pad: gap() * 3, started: performance.now() });
       return;
     }
     if (event.target.closest("button, a, input, textarea, select, label, form")) return;
-    blasts.push({ x: event.clientX, y: event.clientY });
+    blasts.push({ x: event.clientX, y: event.clientY, started: performance.now() });
   });
   window.addEventListener("pointermove", (event) => {
     if (!pointer.inside) {
