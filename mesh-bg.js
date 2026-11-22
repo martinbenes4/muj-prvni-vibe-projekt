@@ -1,8 +1,14 @@
-(function () {
-  const canvas = document.querySelector("#login-mesh");
-  if (!canvas) return;
+/* MeshBg.start({ canvas, dark }) vrací { blast, setDark, stop }.
+   blast({ x, y, all }) spustí vlnu od bodu. all pokryje celé okno.
+   Soubor nezná konkrétní aplikaci. */
+const MeshBg = (() => {
+  function start(options = {}) {
+  const canvas = options.canvas;
+  if (!canvas || !canvas.getContext) return null;
   const ctx = canvas.getContext("2d");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const signals = new AbortController();
+  let dark = Boolean(options.dark);
   let points = [];
   let links = [];
   let frame = 0;
@@ -59,9 +65,7 @@
   }
 
   function palette() {
-    if (document.documentElement.classList.contains("dark")) {
-      return { bg: "#07111a", rgb: [45, 212, 191], alpha: 0.55, node: "rgba(204, 251, 241, 0.9)" };
-    }
+    if (dark) return { bg: "#07111a", rgb: [45, 212, 191], alpha: 0.55, node: "rgba(204, 251, 241, 0.9)" };
     return { bg: "#ffffff", rgb: [100, 116, 139], alpha: 0.85, node: "rgba(71, 85, 105, 0.9)" };
   }
 
@@ -154,28 +158,6 @@
       }
       link.mode = "cut";
     });
-  }
-
-  function segmentCrossesRect(ax, ay, bx, by, rect, pad) {
-    const left = rect.left - pad;
-    const top = rect.top - pad;
-    const right = rect.right + pad;
-    const bottom = rect.bottom + pad;
-    const inside = (x, y) => x >= left && x <= right && y >= top && y <= bottom;
-    if (inside(ax, ay) || inside(bx, by)) return true;
-    const hits = (x1, y1, x2, y2, x3, y3, x4, y4) => {
-      const denom = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
-      if (Math.abs(denom) < 0.001) return false;
-      const t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / denom;
-      const u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / denom;
-      return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-    };
-    return (
-      hits(ax, ay, bx, by, left, top, right, top) ||
-      hits(ax, ay, bx, by, right, top, right, bottom) ||
-      hits(ax, ay, bx, by, right, bottom, left, bottom) ||
-      hits(ax, ay, bx, by, left, bottom, left, top)
-    );
   }
 
   function blastDistance(spot, blast) {
@@ -398,35 +380,40 @@
     frame = requestAnimationFrame(loop);
   }
 
-  document.addEventListener("mesh-blast", (event) => {
+  function blast(detail = {}) {
     if (!running) return;
-    const x = Number(event.detail?.x);
-    const y = Number(event.detail?.y);
-    blasts.push({
-      x: Number.isFinite(x) ? x : window.innerWidth / 2,
-      y: Number.isFinite(y) ? y : window.innerHeight / 2,
-      all: true,
-      started: performance.now(),
-    });
-  });
-
-  document.addEventListener("click", (event) => {
-    if (!running) return;
-    const google = event.target.closest("#auth-google");
-    if (google) {
-      const box = google.getBoundingClientRect();
+    if (detail.rect) {
       blasts.push({
-        x: box.left + box.width / 2,
-        y: box.top + box.height / 2,
-        all: true,
+        rect: detail.rect,
+        pad: Number.isFinite(detail.pad) ? detail.pad : gap() * 3,
+        all: Boolean(detail.all),
         started: performance.now(),
       });
       return;
     }
-    if (event.target.closest("button, a, input, textarea, select, label, form")) return;
-    blasts.push({ x: event.clientX, y: event.clientY, started: performance.now() });
-  });
+    const x = Number(detail.x);
+    const y = Number(detail.y);
+    blasts.push({
+      x: Number.isFinite(x) ? x : window.innerWidth / 2,
+      y: Number.isFinite(y) ? y : window.innerHeight / 2,
+      all: Boolean(detail.all),
+      started: performance.now(),
+    });
+  }
+
+  function setDark(next) {
+    dark = Boolean(next);
+  }
+
+  function stop() {
+    running = false;
+    cancelAnimationFrame(frame);
+    signals.abort();
+  }
+
+  const listen = { signal: signals.signal };
   window.addEventListener("pointermove", (event) => {
+    if (!running) return;
     if (!pointer.inside) {
       pointer.px = event.clientX;
       pointer.py = event.clientY;
@@ -434,17 +421,23 @@
     pointer.x = event.clientX;
     pointer.y = event.clientY;
     pointer.inside = true;
-  });
+  }, listen);
   window.addEventListener("pointerleave", () => {
     pointer.inside = false;
-  });
+  }, listen);
   window.addEventListener("resize", () => {
     if (running) resize();
-  });
+  }, listen);
   document.addEventListener("visibilitychange", () => {
     if (!running) return;
     cancelAnimationFrame(frame);
     if (document.visibilityState === "visible") frame = requestAnimationFrame(loop);
-  });
+  }, listen);
   sync();
+  return { blast, setDark, stop };
+  }
+
+  return { start };
 })();
+
+window.MeshBg = MeshBg;

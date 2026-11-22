@@ -72,6 +72,12 @@ const authPasswordInput = document.querySelector("#auth-password-input");
 const authMessage = document.querySelector("#auth-message");
 const authRegister = document.querySelector("#auth-register");
 const authGoogle = document.querySelector("#auth-google");
+const mesh = window.MeshBg
+  ? window.MeshBg.start({
+      canvas: document.querySelector("#mesh"),
+      dark: document.documentElement.classList.contains("dark"),
+    })
+  : null;
 const appShell = document.querySelector("#app-shell");
 const syncStatus = document.querySelector("#sync-status");
 
@@ -182,6 +188,8 @@ document.addEventListener("click", (event) => {
   if (pickerField && !event.target.closest("#time-picker, #time-start, #time-end")) closePicker();
   if (!event.target.closest("#habit-sport, #sport-suggestions")) sportField.close();
   if (!event.target.closest("[data-role=kind], [data-role=suggestions]")) closeStrengthSuggestions();
+  if (!mesh || event.target.closest("button, a, input, textarea, select, label, form")) return;
+  mesh.blast({ x: event.clientX, y: event.clientY });
 });
 
 timeClear.addEventListener("click", () => {
@@ -256,6 +264,7 @@ authRegister.addEventListener("click", () => {
   signUp();
 });
 authGoogle.addEventListener("click", () => {
+  burstMesh(authGoogle);
   signInWithGoogle();
 });
 
@@ -306,11 +315,14 @@ function toEvent(id, name, date, done, start = "", end = "", details = emptyDeta
   };
 }
 
-function burstMesh(element) {
+function burstMesh(element, all = true) {
+  if (!mesh) return;
   const box = element?.getBoundingClientRect();
-  const x = box ? box.left + box.width / 2 : window.innerWidth / 2;
-  const y = box ? box.top + box.height / 2 : window.innerHeight / 2;
-  document.dispatchEvent(new CustomEvent("mesh-blast", { detail: { x, y } }));
+  mesh.blast({
+    x: box ? box.left + box.width / 2 : window.innerWidth / 2,
+    y: box ? box.top + box.height / 2 : window.innerHeight / 2,
+    all,
+  });
 }
 
 function saveEvents() {
@@ -1238,6 +1250,7 @@ function syncTimeControls() {
 
 function applyTheme(isDark) {
   document.documentElement.classList.toggle("dark", isDark);
+  if (mesh) mesh.setDark(isDark);
   themeToggle.setAttribute("aria-checked", String(isDark));
   themeToggle.setAttribute("aria-label", isDark ? "Přepnout na světlý režim" : "Přepnout na tmavý režim");
 }
