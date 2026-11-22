@@ -42,17 +42,20 @@
       })();
     </script>
     <link rel="stylesheet" href="mesh-bg.css?v=1" />
-    <link rel="stylesheet" href="style.css?v=4" />
+    <link rel="stylesheet" href="style.css?v=5" />
   </head>
   <body class="min-h-screen text-slate-800 antialiased dark:text-slate-100">
     <canvas id="mesh" class="mesh-bg" aria-hidden="true"></canvas>
     <main class="relative z-10 mx-auto flex min-h-screen w-full max-w-xl flex-col px-4 py-10 sm:px-6">
       <header class="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div class="min-w-0">
+        <div class="flex min-w-0 items-center gap-3">
+          <img src="favicon.png?v=1" alt="Znak" class="h-14 w-14 shrink-0 dark:invert" />
+          <div class="min-w-0">
           <p id="day-kind" class="text-sm font-medium uppercase tracking-wide text-teal-700 dark:text-teal-300">Dnes</p>
           <h1 class="mt-1 text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">Tracker návyků</h1>
           <p id="today-label" class="mt-2 text-slate-500 dark:text-slate-400"></p>
           <p id="sync-status" class="mt-1 hidden text-sm text-rose-700 dark:text-rose-300"></p>
+          </div>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <p id="auth-email" class="hidden max-w-32 truncate text-sm text-slate-500 dark:text-slate-400"></p>

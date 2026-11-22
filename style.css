@@ -25,6 +25,11 @@ html.login-open.dark body {
   background: #07111a;
 }
 
+html.login-open #day-kind,
+html.login-open #today-label {
+  display: none;
+}
+
 .theme-knob {
   left: 0.25rem;
   transition: left 180ms ease;
