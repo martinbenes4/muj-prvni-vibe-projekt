@@ -30,6 +30,16 @@ html.login-open #today-label {
   display: none;
 }
 
+.brand-mark {
+  background-color: rgba(71, 85, 105, 0.9);
+  -webkit-mask: url("favicon.png?v=1") center / contain no-repeat;
+  mask: url("favicon.png?v=1") center / contain no-repeat;
+}
+
+html.dark .brand-mark {
+  background-color: rgba(204, 251, 241, 0.9);
+}
+
 .theme-knob {
   left: 0.25rem;
   transition: left 180ms ease;
